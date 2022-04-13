@@ -16,9 +16,9 @@ dagger.#Plan & {
 			env: TEST: "hello world"
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					test "$TEST" = "hello world"
-					"""#,
+					""",
 			]
 		}
 	}

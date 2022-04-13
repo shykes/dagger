@@ -36,9 +36,9 @@ dagger.#Plan & {
 			}
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					test $(ls /target | wc -l) = 1
-					"""#,
+					""",
 			]
 		}
 	}

@@ -35,11 +35,11 @@ dagger.#Plan & {
 			}
 
 			args: ["sh", "-c",
-				#"""
+				"""
 					test "$(find /include/ | wc -l)" -eq 1
 					test -f /include/hello.txt
 					test ! -f /exclude/hello.txt
-					"""#,
+					""",
 			]
 		}
 	}

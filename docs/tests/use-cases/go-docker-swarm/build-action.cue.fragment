@@ -6,12 +6,12 @@ build: {
 	_addGithubSHA: core.#WriteFile & {
 		input:    luaDocs.output.rootfs
 		path:     "/www/github_sha.yml"
-		contents: #"""
+		contents: """
 					keywords: ["particubes", "game", "mobile", "scripting", "cube", "voxel", "world", "docs"]
 					title: "Github SHA"
 					blocks:
-					    - text: "\#(client.env.GITHUB_SHA)"
-					"""#
+					    - text: "\(client.env.GITHUB_SHA)"
+					"""
 	}
 	image: docker.#Image & {
 		rootfs: _addGithubSHA.output

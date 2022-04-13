@@ -48,10 +48,10 @@ dagger.#Plan & {
 		runString: {
 			run: python.#Run & {
 				export: files: "/output.txt": _
-				script: contents: #"""
+				script: contents: """
 					with open("output.txt", 'w') as f:
 					    f.write("Hello, inlined world!\n")
-					"""#
+					"""
 			}
 			output: run.export.files."/output.txt" & "Hello, inlined world!\n"
 		}

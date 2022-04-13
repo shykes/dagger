@@ -23,9 +23,9 @@ dagger.#Plan & {
 			}
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					echo -n hello world > /cache/output.txt
-					"""#,
+					""",
 			]
 		}
 
@@ -38,10 +38,10 @@ dagger.#Plan & {
 				}
 				args: [
 					"sh", "-c",
-					#"""
+					"""
 						test -f /cache/output.txt
 						test "$(cat /cache/output.txt)" = "hello world"
-						"""#,
+						""",
 				]
 			}
 
@@ -56,9 +56,9 @@ dagger.#Plan & {
 				}
 				args: [
 					"sh", "-c",
-					#"""
+					"""
 						test ! -f /cache/output.txt
-						"""#,
+						""",
 				]
 			}
 		}

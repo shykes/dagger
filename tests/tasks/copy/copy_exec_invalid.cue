@@ -15,9 +15,9 @@ dagger.#Plan & {
 			input: image.output
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					echo -n hello world from dagger > /output.txt
-					"""#,
+					""",
 			]
 		}
 

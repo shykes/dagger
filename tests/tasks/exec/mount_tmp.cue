@@ -19,9 +19,9 @@ dagger.#Plan & {
 			}
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					echo -n hello world > /temp/output.txt
-					"""#,
+					""",
 			]
 		}
 
@@ -29,9 +29,9 @@ dagger.#Plan & {
 			input: exec.output
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					test ! -f /temp/output.txt
-					"""#,
+					""",
 			]
 		}
 	}

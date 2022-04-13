@@ -20,10 +20,10 @@ dagger.#Plan & {
 			workdir: "/"
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					test "$(ls -A /)" != ""
 					test "$(ls -A /scratch)" = ""
-					"""#,
+					""",
 			]
 		}
 	}

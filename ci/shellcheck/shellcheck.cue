@@ -26,9 +26,9 @@ import (
 		workdir: "/src"
 		command: {
 			name: "sh"
-			args: ["-c", #"""
+			args: ["-c", """
 				shellcheck $(find . -type f \( -iname \*.bats -o -iname \*.bash -o -iname \*.sh \) -not -path "*/node_modules/*" -not -path "*/bats-*/*")
-				"""#]
+				"""]
 		}
 	}
 }

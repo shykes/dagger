@@ -33,10 +33,10 @@ dagger.#Plan & {
 					}
 					args: [
 						"sh", "-c",
-						#"""
+						"""
 						test "$(cat /run/secrets/test)" = "bar"
 						ls -l /run/secrets/test | grep -- "-r--------"
-						"""#,
+						""",
 					]
 				}
 			}

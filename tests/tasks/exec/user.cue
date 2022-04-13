@@ -21,9 +21,9 @@ dagger.#Plan & {
 				user:  "test"
 				args: [
 					"sh", "-c",
-					#"""
+					"""
 						test "$(whoami)" = "test"
-						"""#,
+						""",
 				]
 			}
 
@@ -32,9 +32,9 @@ dagger.#Plan & {
 				user:  "1000"
 				args: [
 					"sh", "-c",
-					#"""
+					"""
 						test "$(whoami)" = "test"
-						"""#,
+						""",
 				]
 			}
 		}

@@ -15,9 +15,9 @@ dagger.#Plan & {
 			input: image.output
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					echo -n hello world > /output.txt
-					"""#,
+					""",
 			]
 		}
 
@@ -30,10 +30,10 @@ dagger.#Plan & {
 				}
 				args: [
 					"sh", "-c",
-					#"""
+					"""
 						test "$(cat /target/output.txt)" = "hello world"
 						touch /target/rw
-						"""#,
+						""",
 				]
 			}
 
@@ -46,12 +46,12 @@ dagger.#Plan & {
 				}
 				args: [
 					"sh", "-c",
-					#"""
+					"""
 						test "$(cat /target/output.txt)" = "hello world"
 
 						touch /target/ro && exit 1
 						true
-						"""#,
+						""",
 				]
 			}
 
@@ -64,9 +64,9 @@ dagger.#Plan & {
 				}
 				args: [
 					"sh", "-c",
-					#"""
+					"""
 						test "$(cat /target.txt)" = "hello world"
-						"""#,
+						""",
 				]
 			}
 		}

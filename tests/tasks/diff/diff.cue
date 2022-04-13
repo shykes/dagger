@@ -18,9 +18,9 @@ dagger.#Plan & {
 			input: alpineBase.output
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					mkdir /dir && echo -n foo > /dir/foo && echo -n removeme > /removeme
-					"""#,
+					""",
 			]
 		}
 
@@ -28,9 +28,9 @@ dagger.#Plan & {
 			input: exec1.output
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					echo -n bar > /dir/bar && rm removeme
-					"""#,
+					""",
 			]
 		}
 

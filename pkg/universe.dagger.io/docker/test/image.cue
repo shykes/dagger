@@ -95,9 +95,9 @@ dagger.#Plan & {
 				input: myimage
 				command: {
 					name: "sh"
-					flags: "-c": #"""
+					flags: "-c": """
 						pwd > dir.txt
-						"""#
+						"""
 				}
 				export: files: "/bin/dir.txt": _ & {
 					contents: "/bin\n"
@@ -108,9 +108,9 @@ dagger.#Plan & {
 				workdir: "/"
 				command: {
 					name: "sh"
-					flags: "-c": #"""
+					flags: "-c": """
 						pwd > dir.txt
-						"""#
+						"""
 				}
 				export: files: "/dir.txt": _ & {
 					contents: "/\n"

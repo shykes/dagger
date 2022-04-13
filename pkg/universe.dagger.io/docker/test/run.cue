@@ -38,9 +38,9 @@ dagger.#Plan & {
 				input: _image
 				command: {
 					name: "sh"
-					flags: "-c": #"""
+					flags: "-c": """
 						echo -n hello world >> /output.txt
-						"""#
+						"""
 				}
 				export: files: "/output.txt": string & "hello world"
 			}
@@ -52,10 +52,10 @@ dagger.#Plan & {
 				input: _image
 				command: {
 					name: "sh"
-					flags: "-c": #"""
+					flags: "-c": """
 						mkdir -p /test
 						echo -n hello world >> /test/output.txt
-						"""#
+						"""
 				}
 				export: directories: "/test": _
 			}

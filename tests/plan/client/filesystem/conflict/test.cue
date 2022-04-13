@@ -23,9 +23,9 @@ dagger.#Plan & {
 			write: core.#Exec & {
 				input: image.output
 				args: ["sh", "-c",
-					#"""
+					"""
 						echo -n bar > /out.txt
-						"""#,
+						""",
 				]
 			}
 			export: core.#ReadFile & {

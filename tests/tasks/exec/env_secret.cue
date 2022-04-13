@@ -18,9 +18,9 @@ dagger.#Plan & {
 			env: TEST: client.filesystem."secret.txt".read.contents
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					test "$TEST" = "hello world"
-					"""#,
+					""",
 			]
 		}
 	}

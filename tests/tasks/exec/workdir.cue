@@ -16,9 +16,9 @@ dagger.#Plan & {
 			workdir: "/tmp"
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					test "$(pwd)" = "/tmp"
-					"""#,
+					""",
 			]
 		}
 	}

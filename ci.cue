@@ -42,9 +42,9 @@ dagger.#Plan & {
 					contents: _source
 				}
 
-				script: contents: #"""
+				script: contents: """
 					printf "$(git rev-parse --short HEAD)" > /revision
-					"""#
+					"""
 				export: files: "/revision": string
 			}
 

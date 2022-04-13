@@ -21,10 +21,10 @@ dagger.#Plan & {
 				}
 				args: [
 					"sh", "-c",
-					#"""
+					"""
 						test "$(cat /run/secrets/test)" = "hello world"
 						ls -l /run/secrets/test | grep -- "-r--------"
-						"""#,
+						""",
 				]
 			}
 
@@ -39,11 +39,11 @@ dagger.#Plan & {
 				}
 				args: [
 					"sh", "-c",
-					#"""
+					"""
 						ls -l /run/secrets/test | grep -- "-rw-rw-rw-"
 						ls -l /run/secrets/test | grep -- "42"
 						ls -l /run/secrets/test | grep -- "24"
-						"""#,
+						""",
 				]
 			}
 		}

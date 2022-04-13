@@ -58,9 +58,9 @@ dagger.#Plan & {
 					}
 					args: [
 						"sh", "-c",
-						#"""
+						"""
 						test "$(cat /run/secrets/test)" = "hello secretive europa"
-						"""#,
+						""",
 					]
 				}
 			}

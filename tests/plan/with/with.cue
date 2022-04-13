@@ -19,9 +19,9 @@ dagger.#Plan & {
 				env: FOO: string
 				args: [
 					"sh", "-c",
-					#"""
+					"""
 						test -n "$FOO"
-						"""#,
+						""",
 				]
 			}
 

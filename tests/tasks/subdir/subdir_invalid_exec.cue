@@ -32,9 +32,9 @@ dagger.#Plan & {
 			input: subdir.output
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					# impossible execution
-					"""#,
+					""",
 			]
 		}
 	}

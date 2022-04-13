@@ -44,7 +44,7 @@ dagger.#Plan & {
 			input: _dockerCLI.output
 			env: GITHUB_SHA: client.env.GITHUB_SHA
 			always: true
-			script: contents: #"""
+			script: contents: """
 				TRIMMED_URL="$(echo $URL | cut -d '/' -f 1)"
 				curl --verbose --fail --connect-timeout 5 --location "$URL" >"$TRIMMED_URL.curl.out" 2>&1
 
@@ -54,7 +54,7 @@ dagger.#Plan & {
 					cat "$TRIMMED_URL.curl.out"
 					exit 1
 				fi
-				"""#
+				"""
 		}
 
 		build: {
@@ -65,12 +65,12 @@ dagger.#Plan & {
 			_addGithubSHA: core.#WriteFile & {
 				input:    luaDocs.output.rootfs
 				path:     "/www/github_sha.yml"
-				contents: #"""
+				contents: """
 					keywords: ["particubes", "game", "mobile", "scripting", "cube", "voxel", "world", "docs"]
 					title: "Github SHA"
 					blocks:
-					    - text: "\#(client.env.GITHUB_SHA)"
-					"""#
+					    - text: "\(client.env.GITHUB_SHA)"
+					"""
 			}
 			image: docker.#Image & {
 				rootfs: _addGithubSHA.output
@@ -84,9 +84,9 @@ dagger.#Plan & {
 			env: IMAGE_NAME: params.image.localTag
 			command: {
 				name: "sh"
-				flags: "-c": #"""
+				flags: "-c": """
 					docker rm --force "$IMAGE_NAME"
-					"""#
+					"""
 			}
 		}
 
@@ -110,9 +110,9 @@ dagger.#Plan & {
 				}
 				command: {
 					name: "sh"
-					flags: "-c": #"""
+					flags: "-c": """
 						docker run -d --rm --name "$IMAGE_NAME" -p "$PORTS" "$IMAGE_NAME"
-						"""#
+						"""
 				}
 			}
 
@@ -141,9 +141,9 @@ dagger.#Plan & {
 				env: DEP: "\(publish.result)" // DEP created wth publish
 				command: {
 					name: "sh"
-					flags: "-c": #"""
+					flags: "-c": """
 						docker service update --image registry.particubes.com/lua-docs:latest lua-docs
-						"""#
+						"""
 				}
 			}
 

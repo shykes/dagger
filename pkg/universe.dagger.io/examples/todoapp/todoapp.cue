@@ -63,10 +63,10 @@ dagger.#Plan & {
 						}
 						_nodeModulesMount
 					}
-					script: contents: #"""
+					script: contents: """
 						yarn config set cache-folder /cache/yarn
 						yarn install
-						"""#
+						"""
 				},
 			]
 		}
@@ -75,9 +75,9 @@ dagger.#Plan & {
 			input:   deps.output
 			workdir: "/src"
 			mounts:  _nodeModulesMount
-			script: contents: #"""
+			script: contents: """
 				yarn run test
-				"""#
+				"""
 		}
 
 		build: {
@@ -85,9 +85,9 @@ dagger.#Plan & {
 				input:   test.output
 				mounts:  _nodeModulesMount
 				workdir: "/src"
-				script: contents: #"""
+				script: contents: """
 					yarn run build
-					"""#
+					"""
 			}
 
 			contents: core.#Subdir & {

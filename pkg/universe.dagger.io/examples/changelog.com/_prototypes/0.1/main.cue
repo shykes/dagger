@@ -77,7 +77,7 @@ test_db_start: docker.#Command & {
 		CONTAINER_NAME:  test_db_container_name
 		CONTAINER_IMAGE: test_db_image_ref
 	}
-	command: #"""
+	command: """
 		docker container inspect $CONTAINER_NAME \
 		  --format 'Container "{{.Name}}" is "{{.State.Status}}"' \
 		|| docker container run \
@@ -90,7 +90,7 @@ test_db_start: docker.#Command & {
 
 		docker container inspect $CONTAINER_NAME \
 		  --format 'Container "{{.Name}}" is "{{.State.Status}}"'
-		"""#
+		"""
 }
 
 app_image: docker.#Pull & {
@@ -164,9 +164,9 @@ test_db_stop: docker.#Command & {
 		DEP:            test.dockerfile
 		CONTAINER_NAME: test_db_container_name
 	}
-	command: #"""
+	command: """
 		docker container rm --force $CONTAINER_NAME
-		"""#
+		"""
 }
 
 deps_compile_prod: #deps_compile & {
@@ -219,7 +219,7 @@ image_prod: docker.#Command & {
 	}
 	files: "/tmp/Dockerfile":                  prod_dockerfile
 	secret: "/run/secrets/dockerhub_password": dockerhub_password
-	command: #"""
+	command: """
 		cd /tmp
 		docker build \
 		  --build-arg APP_FROM_PATH=/app \
@@ -228,7 +228,7 @@ image_prod: docker.#Command & {
 		  --build-arg APP_VERSION="$APP_VERSION" \
 		  --build-arg BUILD_URL="$BUILD_URL" \
 		  --tag "$PROD_IMAGE_REF" .
-		"""#
+		"""
 }
 
 if git_branch == "master" {
@@ -240,11 +240,11 @@ if git_branch == "master" {
 			ONLY_RUN_AFTER_TEST_OK: test.dockerfile
 		}
 		secret: "/run/secrets/dockerhub_password": dockerhub_password
-		command: #"""
+		command: """
 			docker login --username "$DOCKERHUB_USERNAME" --password "$(cat /run/secrets/dockerhub_password)"
 			docker push "$PROD_IMAGE_REF" | tee docker.push.log
 			echo "$PROD_IMAGE_REF" > image.ref
 			awk '/digest/ { print $3 }' < docker.push.log > image.digest
-			"""#
+			"""
 	}
 }

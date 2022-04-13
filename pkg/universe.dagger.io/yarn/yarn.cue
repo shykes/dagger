@@ -73,9 +73,9 @@ import (
 
 			bash.#Run & {
 				// FIXME: move shell script to its own file
-				script: contents: #"""
+				script: contents: """
 					yarn --cwd "$YARN_CWD" install --production false
-					"""#
+					"""
 
 				mounts: "yarn cache": {
 					dest:     "/cache/yarn"
@@ -95,7 +95,7 @@ import (
 
 			bash.#Run & {
 				// FIXME: move shell script to its own file
-				script: contents: #"""
+				script: contents: """
 					# Create $ENVFILE_NAME file if set
 					[ -n "$ENVFILE_NAME" ] && echo "$ENVFILE" > "$ENVFILE_NAME"
 
@@ -106,7 +106,7 @@ import (
 					else
 						mkdir /build
 					fi
-					"""#
+					"""
 
 				mounts: "yarn cache": {
 					dest:     "/cache/yarn"

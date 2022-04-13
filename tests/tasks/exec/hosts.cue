@@ -16,10 +16,10 @@ dagger.#Plan & {
 			hosts: "unit.test": "1.2.3.4"
 			args: [
 				"sh", "-c",
-				#"""
+				"""
 					grep -q "unit.test" /etc/hosts
 					grep -q "1.2.3.4" /etc/hosts
-					"""#,
+					""",
 			]
 		}
 	}

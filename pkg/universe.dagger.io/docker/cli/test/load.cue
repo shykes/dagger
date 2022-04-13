@@ -46,10 +46,10 @@ dagger.#Plan & {
 				// FIXME: without this forced dependency, load.command might not run
 				DEP: "\(load.success)"
 			}
-			script: contents: #"""
+			script: contents: """
 				test "$(docker image inspect $IMAGE_NAME -f '{{.Id}}')" = "$IMAGE_ID"
 				docker run --rm $IMAGE_NAME stat /foo.bar
-				"""#
+				"""
 		}
 	}
 }
