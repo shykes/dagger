@@ -36,7 +36,7 @@ dagger.#Plan & {
 						Info object must have \"contact\" object.
 						"""
 				},
-				..._,
+				...,
 			]
 		}
 	}
