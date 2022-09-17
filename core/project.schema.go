@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/graphql-go/graphql"
-	"go.dagger.io/dagger/core/base"
+	"go.dagger.io/dagger/core/builtins"
 	"go.dagger.io/dagger/core/filesystem"
 	"go.dagger.io/dagger/project"
 	"go.dagger.io/dagger/router"
@@ -21,10 +21,17 @@ type Project struct {
 	schema       *project.RemoteSchema // internal-only, for convenience in `install` resolver
 }
 
-var _ router.ExecutableSchema = &projectSchema{}
+var _ builtins.Builtin = &projectSchema{}
+
+func newProjectBuiltin(env builtins.Environment) builtins.Builtin {
+	return &projectSchema{
+		Environment:     env,
+		compiledSchemas: make(map[string]*project.CompiledRemoteSchema),
+	}
+}
 
 type projectSchema struct {
-	*base.BaseSchema
+	builtins.Environment
 	compiledSchemas map[string]*project.CompiledRemoteSchema
 	l               sync.RWMutex
 	sf              singleflight.Group
@@ -120,7 +127,7 @@ func (s *projectSchema) install(p graphql.ResolveParams) (any, error) {
 		return nil, err
 	}
 
-	if err := s.Router.Add(executableSchema); err != nil {
+	if err := s.AddSchema(executableSchema); err != nil {
 		return nil, err
 	}
 
@@ -134,7 +141,7 @@ func (s *projectSchema) loadProject(p graphql.ResolveParams) (any, error) {
 	}
 
 	configPath := p.Args["configPath"].(string)
-	schema, err := project.Load(p.Context, s.Gw, s.Platform, obj, configPath, s.SSHAuthSockID)
+	schema, err := project.Load(p.Context, s.Buildkit(), s.Platform(), obj, configPath, s.SSHAuthSockID())
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +152,7 @@ func (s *projectSchema) loadProject(p graphql.ResolveParams) (any, error) {
 func (s *projectSchema) project(p graphql.ResolveParams) (any, error) {
 	name := p.Args["name"].(string)
 
-	schema := s.Router.Get(name)
+	schema := s.GetSchema(name)
 	if schema == nil {
 		return nil, fmt.Errorf("project %q not found", name)
 	}
@@ -155,7 +162,7 @@ func (s *projectSchema) project(p graphql.ResolveParams) (any, error) {
 
 func (s *projectSchema) generatedCode(p graphql.ResolveParams) (any, error) {
 	obj := p.Source.(*Project)
-	coreSchema := s.Router.Get("core")
+	coreSchema := s.GetSchema("core")
 	return obj.schema.Generate(p.Context, coreSchema.Schema())
 }
 

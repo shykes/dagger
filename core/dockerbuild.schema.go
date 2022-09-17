@@ -6,22 +6,26 @@ import (
 	dockerfilebuilder "github.com/moby/buildkit/frontend/dockerfile/builder"
 	bkgw "github.com/moby/buildkit/frontend/gateway/client"
 	"github.com/moby/buildkit/solver/pb"
-	"go.dagger.io/dagger/core/base"
+	"go.dagger.io/dagger/core/builtins"
 	"go.dagger.io/dagger/core/filesystem"
 	"go.dagger.io/dagger/router"
 )
 
-var _ router.ExecutableSchema = &dockerBuildSchema{}
+var _ builtins.Builtin = &dockerBuild{}
 
-type dockerBuildSchema struct {
-	*base.BaseSchema
+func newDockerBuildBuiltin(env builtins.Environment) builtins.Builtin {
+	return &dockerBuild{env}
 }
 
-func (s *dockerBuildSchema) Name() string {
+type dockerBuild struct {
+	builtins.Environment
+}
+
+func (s *dockerBuild) Name() string {
 	return "dockerbuild"
 }
 
-func (s *dockerBuildSchema) Schema() string {
+func (s *dockerBuild) Schema() string {
 	return `
 extend type Filesystem {
 	"docker build using this filesystem as context"
@@ -30,7 +34,7 @@ extend type Filesystem {
 	`
 }
 
-func (s *dockerBuildSchema) Resolvers() router.Resolvers {
+func (s *dockerBuild) Resolvers() router.Resolvers {
 	return router.Resolvers{
 		"Filesystem": router.ObjectResolver{
 			"dockerbuild": s.dockerbuild,
@@ -38,11 +42,11 @@ func (s *dockerBuildSchema) Resolvers() router.Resolvers {
 	}
 }
 
-func (s *dockerBuildSchema) Dependencies() []router.ExecutableSchema {
+func (s *dockerBuild) Dependencies() []router.ExecutableSchema {
 	return nil
 }
 
-func (s *dockerBuildSchema) dockerbuild(p graphql.ResolveParams) (any, error) {
+func (s *dockerBuild) dockerbuild(p graphql.ResolveParams) (any, error) {
 	obj, err := filesystem.FromSource(p.Source)
 	if err != nil {
 		return nil, err
@@ -54,7 +58,7 @@ func (s *dockerBuildSchema) dockerbuild(p graphql.ResolveParams) (any, error) {
 	}
 
 	opts := map[string]string{
-		"platform": platforms.Format(s.Platform),
+		"platform": platforms.Format(s.Platform()),
 	}
 	if dockerfile, ok := p.Args["dockerfile"].(string); ok {
 		opts["filename"] = dockerfile
@@ -63,7 +67,7 @@ func (s *dockerBuildSchema) dockerbuild(p graphql.ResolveParams) (any, error) {
 		dockerfilebuilder.DefaultLocalNameContext:    def,
 		dockerfilebuilder.DefaultLocalNameDockerfile: def,
 	}
-	res, err := s.Gw.Solve(p.Context, bkgw.SolveRequest{
+	res, err := s.Buildkit().Solve(p.Context, bkgw.SolveRequest{
 		Frontend:       "dockerfile.v0",
 		FrontendOpt:    opts,
 		FrontendInputs: inputs,
@@ -81,5 +85,5 @@ func (s *dockerBuildSchema) dockerbuild(p graphql.ResolveParams) (any, error) {
 		return nil, err
 	}
 
-	return filesystem.FromState(p.Context, st, s.Platform)
+	return filesystem.FromState(p.Context, st, s.Platform())
 }

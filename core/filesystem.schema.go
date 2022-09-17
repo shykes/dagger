@@ -7,7 +7,7 @@ import (
 	"github.com/graphql-go/graphql/language/ast"
 	bkclient "github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
-	"go.dagger.io/dagger/core/base"
+	"go.dagger.io/dagger/core/builtins"
 	"go.dagger.io/dagger/core/filesystem"
 	"go.dagger.io/dagger/router"
 )
@@ -39,10 +39,14 @@ var fsIDResolver = router.ScalarResolver{
 	},
 }
 
-var _ router.ExecutableSchema = &filesystemSchema{}
+var _ builtins.Builtin = &filesystemSchema{}
+
+func newFilesystemBuiltin(env builtins.Environment) builtins.Builtin {
+	return &filesystemSchema{env}
+}
 
 type filesystemSchema struct {
-	*base.BaseSchema
+	builtins.Environment
 }
 
 func (s *filesystemSchema) Name() string {
@@ -119,7 +123,7 @@ func (s *filesystemSchema) file(p graphql.ResolveParams) (any, error) {
 
 	path := p.Args["path"].(string)
 
-	output, err := obj.ReadFile(p.Context, s.Gw, path)
+	output, err := obj.ReadFile(p.Context, s.Buildkit(), path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
