@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 
+	"github.com/dagger/cloak/core/base"
 	"github.com/dagger/cloak/router"
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/graphql/language/ast"
@@ -38,7 +39,7 @@ var secretIDResolver = router.ScalarResolver{
 var _ router.ExecutableSchema = &secretSchema{}
 
 type secretSchema struct {
-	*baseSchema
+	*base.BaseSchema
 }
 
 func (s *secretSchema) Name() string {
@@ -75,7 +76,7 @@ func (s *secretSchema) Dependencies() []router.ExecutableSchema {
 
 func (s *secretSchema) secret(p graphql.ResolveParams) (any, error) {
 	id := p.Args["id"].(string)
-	plaintext, err := s.secretStore.GetSecret(p.Context, id)
+	plaintext, err := s.SecretStore.GetSecret(p.Context, id)
 	if err != nil {
 		return nil, fmt.Errorf("secret %s: %w", id, err)
 	}
@@ -84,5 +85,5 @@ func (s *secretSchema) secret(p graphql.ResolveParams) (any, error) {
 
 func (s *secretSchema) addSecret(p graphql.ResolveParams) (any, error) {
 	plaintext := p.Args["plaintext"].(string)
-	return s.secretStore.AddSecret(p.Context, []byte(plaintext)), nil
+	return s.SecretStore.AddSecret(p.Context, []byte(plaintext)), nil
 }

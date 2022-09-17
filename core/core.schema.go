@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dagger/cloak/core/base"
 	"github.com/dagger/cloak/core/filesystem"
 	"github.com/dagger/cloak/router"
 	"github.com/graphql-go/graphql"
@@ -15,7 +16,7 @@ import (
 var _ router.ExecutableSchema = &coreSchema{}
 
 type coreSchema struct {
-	*baseSchema
+	*base.BaseSchema
 	workdirID string
 }
 
@@ -134,7 +135,7 @@ func (r *coreSchema) localDirWrite(p graphql.ResolveParams) (any, error) {
 	fsid := p.Args["contents"].(filesystem.FSID)
 	fs := filesystem.Filesystem{ID: fsid}
 
-	workdir, err := filepath.Abs(r.solveOpts.LocalDirs[r.workdirID])
+	workdir, err := filepath.Abs(r.SolveOpts.LocalDirs[r.workdirID])
 	if err != nil {
 		return nil, err
 	}

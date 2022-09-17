@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/dagger/cloak/core/base"
 	"github.com/dagger/cloak/core/filesystem"
 	"github.com/dagger/cloak/project"
 	"github.com/dagger/cloak/router"
@@ -23,11 +24,10 @@ type Project struct {
 var _ router.ExecutableSchema = &projectSchema{}
 
 type projectSchema struct {
-	*baseSchema
+	*base.BaseSchema
 	compiledSchemas map[string]*project.CompiledRemoteSchema
 	l               sync.RWMutex
 	sf              singleflight.Group
-	sshAuthSockID   string
 }
 
 func (s *projectSchema) Name() string {
@@ -120,7 +120,7 @@ func (s *projectSchema) install(p graphql.ResolveParams) (any, error) {
 		return nil, err
 	}
 
-	if err := s.router.Add(executableSchema); err != nil {
+	if err := s.Router.Add(executableSchema); err != nil {
 		return nil, err
 	}
 
@@ -134,7 +134,7 @@ func (s *projectSchema) loadProject(p graphql.ResolveParams) (any, error) {
 	}
 
 	configPath := p.Args["configPath"].(string)
-	schema, err := project.Load(p.Context, s.gw, s.platform, obj, configPath, s.sshAuthSockID)
+	schema, err := project.Load(p.Context, s.Gw, s.Platform, obj, configPath, s.SSHAuthSockID)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +145,7 @@ func (s *projectSchema) loadProject(p graphql.ResolveParams) (any, error) {
 func (s *projectSchema) project(p graphql.ResolveParams) (any, error) {
 	name := p.Args["name"].(string)
 
-	schema := s.router.Get(name)
+	schema := s.Router.Get(name)
 	if schema == nil {
 		return nil, fmt.Errorf("project %q not found", name)
 	}
@@ -155,7 +155,7 @@ func (s *projectSchema) project(p graphql.ResolveParams) (any, error) {
 
 func (s *projectSchema) generatedCode(p graphql.ResolveParams) (any, error) {
 	obj := p.Source.(*Project)
-	coreSchema := s.router.Get("core")
+	coreSchema := s.Router.Get("core")
 	return obj.schema.Generate(p.Context, coreSchema.Schema())
 }
 

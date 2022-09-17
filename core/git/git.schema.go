@@ -1,24 +1,25 @@
-package core
+package git
 
 import (
 	"fmt"
 
+	"github.com/dagger/cloak/core/base"
 	"github.com/dagger/cloak/router"
 	"github.com/graphql-go/graphql"
 	"github.com/moby/buildkit/client/llb"
 )
 
-var _ router.ExecutableSchema = &gitSchema{}
+var _ router.ExecutableSchema = &GitSchema{}
 
-type gitSchema struct {
-	*baseSchema
+type GitSchema struct {
+	*base.BaseSchema
 }
 
-func (s *gitSchema) Name() string {
+func (s *GitSchema) Name() string {
 	return "git"
 }
 
-func (s *gitSchema) Schema() string {
+func (s *GitSchema) Schema() string {
 	return `
 	extend type Query {
 		"Query a git repository"
@@ -52,7 +53,7 @@ func (s *gitSchema) Schema() string {
 `
 }
 
-func (s *gitSchema) Resolvers() router.Resolvers {
+func (s *GitSchema) Resolvers() router.Resolvers {
 	return router.Resolvers{
 		"Query": router.ObjectResolver{
 			"git": s.git,
@@ -73,18 +74,18 @@ func (s *gitSchema) Resolvers() router.Resolvers {
 	}
 }
 
-func (s *gitSchema) Dependencies() []router.ExecutableSchema {
+func (s *GitSchema) Dependencies() []router.ExecutableSchema {
 	return nil
 }
 
 // Compat with old git API
-func (s *gitSchema) gitOld(p graphql.ResolveParams) (any, error) {
+func (s *GitSchema) gitOld(p graphql.ResolveParams) (any, error) {
 	remote := p.Args["remote"].(string)
 	ref, _ := p.Args["ref"].(string)
 
 	var opts []llb.GitOption
-	if s.sshAuthSockID != "" {
-		opts = append(opts, llb.MountSSHSock(s.sshAuthSockID))
+	if s.SSHAuthSockID != "" {
+		opts = append(opts, llb.MountSSHSock(s.SSHAuthSockID))
 	}
 	st := llb.Git(remote, ref, opts...)
 	return s.Solve(p.Context, st)
@@ -99,7 +100,7 @@ type gitRef struct {
 	name       string
 }
 
-func (s *gitSchema) git(p graphql.ResolveParams) (any, error) {
+func (s *GitSchema) git(p graphql.ResolveParams) (any, error) {
 	url := p.Args["url"].(string)
 
 	return gitRepository{
@@ -107,7 +108,7 @@ func (s *gitSchema) git(p graphql.ResolveParams) (any, error) {
 	}, nil
 }
 
-func (s *gitSchema) branch(p graphql.ResolveParams) (any, error) {
+func (s *GitSchema) branch(p graphql.ResolveParams) (any, error) {
 	repo := p.Source.(gitRepository)
 	return gitRef{
 		repository: repo,
@@ -115,11 +116,11 @@ func (s *gitSchema) branch(p graphql.ResolveParams) (any, error) {
 	}, nil
 }
 
-func (s *gitSchema) branches(p graphql.ResolveParams) (any, error) {
+func (s *GitSchema) branches(p graphql.ResolveParams) (any, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (s *gitSchema) tag(p graphql.ResolveParams) (any, error) {
+func (s *GitSchema) tag(p graphql.ResolveParams) (any, error) {
 	repo := p.Source.(gitRepository)
 	return gitRef{
 		repository: repo,
@@ -127,19 +128,19 @@ func (s *gitSchema) tag(p graphql.ResolveParams) (any, error) {
 	}, nil
 }
 
-func (s *gitSchema) tags(p graphql.ResolveParams) (any, error) {
+func (s *GitSchema) tags(p graphql.ResolveParams) (any, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (s *gitSchema) digest(p graphql.ResolveParams) (any, error) {
+func (s *GitSchema) digest(p graphql.ResolveParams) (any, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (s *gitSchema) tree(p graphql.ResolveParams) (any, error) {
+func (s *GitSchema) tree(p graphql.ResolveParams) (any, error) {
 	ref := p.Source.(gitRef)
 	var opts []llb.GitOption
-	if s.sshAuthSockID != "" {
-		opts = append(opts, llb.MountSSHSock(s.sshAuthSockID))
+	if s.SSHAuthSockID != "" {
+		opts = append(opts, llb.MountSSHSock(s.SSHAuthSockID))
 	}
 	st := llb.Git(ref.repository.url, ref.name, opts...)
 	return s.Solve(p.Context, st)
