@@ -9,6 +9,7 @@ import (
 	"github.com/graphql-go/graphql"
 	"github.com/moby/buildkit/client/llb"
 	"github.com/pkg/errors"
+	"go.dagger.io/dagger/core/base"
 	"go.dagger.io/dagger/core/filesystem"
 	"go.dagger.io/dagger/core/shim"
 	"go.dagger.io/dagger/router"
@@ -54,7 +55,7 @@ type ExecSecretEnvInput struct {
 var _ router.ExecutableSchema = &filesystemSchema{}
 
 type execSchema struct {
-	*baseSchema
+	*base.BaseSchema
 }
 
 func (s *execSchema) Name() string {
@@ -181,7 +182,7 @@ func (s *execSchema) exec(p graphql.ResolveParams) (any, error) {
 		input.Mounts[i].Path = filepath.Clean(input.Mounts[i].Path)
 	}
 
-	shimSt, err := shim.Build(p.Context, s.gw, s.platform)
+	shimSt, err := shim.Build(p.Context, s.Gw, s.Platform)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +223,7 @@ func (s *execSchema) exec(p graphql.ResolveParams) (any, error) {
 	if input.SSHAuthSock != "" {
 		runOpt = append(runOpt,
 			llb.AddSSHSocket(
-				llb.SSHID(s.sshAuthSockID),
+				llb.SSHID(s.SSHAuthSockID),
 				llb.SSHSocketTarget(input.SSHAuthSock),
 			),
 			llb.AddEnv("SSH_AUTH_SOCK", input.SSHAuthSock),
@@ -256,14 +257,14 @@ func (s *execSchema) exec(p graphql.ResolveParams) (any, error) {
 		return nil, errors.New(cleanErr)
 	}
 
-	metadataFS, err := filesystem.FromState(p.Context, execState.GetMount("/dagger"), s.platform)
+	metadataFS, err := filesystem.FromState(p.Context, execState.GetMount("/dagger"), s.Platform)
 	if err != nil {
 		return nil, err
 	}
 
 	mounts := map[string]*filesystem.Filesystem{}
 	for _, mount := range input.Mounts {
-		mountFS, err := filesystem.FromState(p.Context, execState.GetMount(mount.Path), s.platform)
+		mountFS, err := filesystem.FromState(p.Context, execState.GetMount(mount.Path), s.Platform)
 		if err != nil {
 			return nil, err
 		}
@@ -279,7 +280,7 @@ func (s *execSchema) exec(p graphql.ResolveParams) (any, error) {
 
 func (s *execSchema) stdout(p graphql.ResolveParams) (any, error) {
 	obj := p.Source.(*Exec)
-	output, err := obj.Metadata.ReadFile(p.Context, s.gw, "/stdout")
+	output, err := obj.Metadata.ReadFile(p.Context, s.Gw, "/stdout")
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +290,7 @@ func (s *execSchema) stdout(p graphql.ResolveParams) (any, error) {
 
 func (s *execSchema) stderr(p graphql.ResolveParams) (any, error) {
 	obj := p.Source.(*Exec)
-	output, err := obj.Metadata.ReadFile(p.Context, s.gw, "/stderr")
+	output, err := obj.Metadata.ReadFile(p.Context, s.Gw, "/stderr")
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +300,7 @@ func (s *execSchema) stderr(p graphql.ResolveParams) (any, error) {
 
 func (s *execSchema) exitCode(p graphql.ResolveParams) (any, error) {
 	obj := p.Source.(*Exec)
-	output, err := obj.Metadata.ReadFile(p.Context, s.gw, "/exitCode")
+	output, err := obj.Metadata.ReadFile(p.Context, s.Gw, "/exitCode")
 	if err != nil {
 		return nil, err
 	}

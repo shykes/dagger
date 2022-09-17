@@ -6,6 +6,7 @@ import (
 	dockerfilebuilder "github.com/moby/buildkit/frontend/dockerfile/builder"
 	bkgw "github.com/moby/buildkit/frontend/gateway/client"
 	"github.com/moby/buildkit/solver/pb"
+	"go.dagger.io/dagger/core/base"
 	"go.dagger.io/dagger/core/filesystem"
 	"go.dagger.io/dagger/router"
 )
@@ -13,7 +14,7 @@ import (
 var _ router.ExecutableSchema = &dockerBuildSchema{}
 
 type dockerBuildSchema struct {
-	*baseSchema
+	*base.BaseSchema
 }
 
 func (s *dockerBuildSchema) Name() string {
@@ -53,7 +54,7 @@ func (s *dockerBuildSchema) dockerbuild(p graphql.ResolveParams) (any, error) {
 	}
 
 	opts := map[string]string{
-		"platform": platforms.Format(s.platform),
+		"platform": platforms.Format(s.Platform),
 	}
 	if dockerfile, ok := p.Args["dockerfile"].(string); ok {
 		opts["filename"] = dockerfile
@@ -62,7 +63,7 @@ func (s *dockerBuildSchema) dockerbuild(p graphql.ResolveParams) (any, error) {
 		dockerfilebuilder.DefaultLocalNameContext:    def,
 		dockerfilebuilder.DefaultLocalNameDockerfile: def,
 	}
-	res, err := s.gw.Solve(p.Context, bkgw.SolveRequest{
+	res, err := s.Gw.Solve(p.Context, bkgw.SolveRequest{
 		Frontend:       "dockerfile.v0",
 		FrontendOpt:    opts,
 		FrontendInputs: inputs,
@@ -80,5 +81,5 @@ func (s *dockerBuildSchema) dockerbuild(p graphql.ResolveParams) (any, error) {
 		return nil, err
 	}
 
-	return filesystem.FromState(p.Context, st, s.platform)
+	return filesystem.FromState(p.Context, st, s.Platform)
 }
