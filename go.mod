@@ -26,8 +26,8 @@ require (
 	github.com/rs/zerolog v1.26.1
 	github.com/sergi/go-diff v1.2.0
 	github.com/spf13/cobra v1.4.0
-	github.com/spf13/viper v1.10.0
-	github.com/stretchr/testify v1.7.1
+	github.com/spf13/viper v1.15.0
+	github.com/stretchr/testify v1.8.1
 	github.com/tonistiigi/fsutil v0.0.0-20220315205639-9ed612626da3
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea
 	github.com/tonistiigi/vt100 v0.0.0-20210615222946-8066bb97264f
@@ -35,13 +35,12 @@ require (
 	go.opentelemetry.io/otel/exporters/jaeger v1.6.1
 	go.opentelemetry.io/otel/sdk v1.6.1
 	go.opentelemetry.io/otel/trace v1.6.1
-	golang.org/x/mod v0.6.0-dev.0.20211013180041-c96bc1413d57
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b
-	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
-	golang.org/x/tools v0.1.8 // indirect
-	google.golang.org/grpc v1.45.0
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4
+	golang.org/x/sync v0.1.0
+	golang.org/x/term v0.3.0
+	golang.org/x/time v0.1.0
+	google.golang.org/grpc v1.52.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 replace (
