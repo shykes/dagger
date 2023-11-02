@@ -83,13 +83,12 @@ func withEngineAndTUI(
 		}
 		if debug {
 			opts = append(opts, console.WithMessageLevel(progrock.MessageLevel_DEBUG))
+			params.EngineNameCallback = func(name string) {
+				fmt.Fprintln(os.Stderr, "Connected to engine", name)
+			}
 		}
 
 		params.ProgrockWriter = console.NewWriter(os.Stderr, opts...)
-
-		params.EngineNameCallback = func(name string) {
-			fmt.Fprintln(os.Stderr, "Connected to engine", name)
-		}
 
 		params.CloudURLCallback = func(cloudURL string) {
 			fmt.Fprintln(os.Stderr, "Dagger Cloud URL:", cloudURL)
@@ -185,12 +184,14 @@ func inlineTUI(
 			})
 		}
 
-		params.EngineNameCallback = func(name string) {
-			ui.SetStatusInfo(progrock.StatusInfo{
-				Name:  "Engine",
-				Value: name,
-				Order: 2,
-			})
+		if debug {
+			params.EngineNameCallback = func(name string) {
+				ui.SetStatusInfo(progrock.StatusInfo{
+					Name:  "Engine",
+					Value: name,
+					Order: 2,
+				})
+			}
 		}
 
 		sess, ctx, err := client.Connect(ctx, params)

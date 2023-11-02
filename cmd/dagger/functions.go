@@ -36,6 +36,7 @@ var funcCmds = FuncCommands{
 	shellCmd,
 	downloadCmd,
 	upCmd,
+	printCmd,
 }
 
 var funcListCmd = &FuncCommand{

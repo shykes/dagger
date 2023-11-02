@@ -29,6 +29,7 @@ var shellCmd = &FuncCommand{
 	},
 	OnSelectObjectLeaf: func(c *FuncCommand, name string) error {
 		if name != Container {
+			// FIXME: add support for directory
 			return fmt.Errorf("shell can only be called on a container")
 		}
 		c.Select("id")
@@ -69,20 +70,30 @@ var shellCmd = &FuncCommand{
 func withShellExec(ctx context.Context, ctr *dagger.Container) *dagger.Container {
 	args := shellEntrypoint
 
+	// If --entrypoint NOT specified
 	if len(args) == 0 {
+		// get container entrypoint
 		args, _ = ctr.Entrypoint(ctx)
 
+		// if no container entrypoint, append container default args
 		if len(args) == 0 {
 			args, _ = ctr.DefaultArgs(ctx)
+			ctr = ctr.WithDefaultArgs(dagger.ContainerWithDefaultArgsOpts{Args: nil})
 		}
 
 		if len(args) > 0 {
-			return ctr.WithExec(nil)
+			return ctr
 		}
 
+		// if no entrypoint AND no default args, default to just "sh"
 		args = []string{"sh"}
 	}
 
+	// if:
+	//    a) container has no entrypoint AND no default args,
+	// OR b) --entrypoint was manually specified
+	//
+	// THEN
 	return ctr.WithExec(args, dagger.ContainerWithExecOpts{
 		SkipEntrypoint: true,
 	})
