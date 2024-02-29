@@ -544,7 +544,8 @@ func (fc *FuncCommand) addArgsForFunction(cmd *cobra.Command, cmdArgs []string, 
 	for _, arg := range fn.Args {
 		_, err := arg.AddFlag(cmd.Flags(), dag)
 		if err != nil {
-			return err
+			// return err
+			continue
 		}
 		if arg.IsRequired() {
 			cmd.MarkFlagRequired(arg.FlagName())
@@ -586,6 +587,7 @@ func (fc *FuncCommand) selectFunc(selectName string, fn *modFunction, cmd *cobra
 
 		flag := cmd.Flags().Lookup(arg.FlagName())
 		if flag == nil {
+			return nil
 			return fmt.Errorf("no flag for %q", arg.FlagName())
 		}
 
