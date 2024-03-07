@@ -1,0 +1,5 @@
+{
+  "name": "go",
+  "sdk": "go",
+  "engineVersion": "v0.10.0"
+}
