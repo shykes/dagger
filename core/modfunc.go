@@ -171,6 +171,7 @@ func (fn *ModuleFunction) Call(ctx context.Context, caller *call.ID, opts *CallO
 		callerIDDigest := caller.Digest() // FIXME(vito) canonicalize, once all that's implemented
 		callerDigestInputs = append(callerDigestInputs, callerIDDigest.String())
 	}
+	opts.Cache = true // shykes: force caching of all function calls
 	if !opts.Cache {
 		// use the ServerID so that we bust cache once-per-session
 		clientMetadata, err := engine.ClientMetadataFromContext(ctx)
