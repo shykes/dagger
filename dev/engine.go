@@ -167,7 +167,7 @@ func (e *Engine) Lint(
 ) error {
 	// Packages to lint
 	packages := []string{
-		"",
+		".",
 		// FIXME: should the CI lint itself?
 		// FIXME: unsustainable to require keeping this list up to date by hand
 		"dev",
