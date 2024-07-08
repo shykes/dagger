@@ -77,11 +77,11 @@ func (p *Go) Env() *Container {
 func (p *Go) Lint(
 	ctx context.Context,
 
-	pkgs []string, // +optional
+	packages []string, // +optional
 	all bool, // +optional
 ) error {
 	eg, ctx := errgroup.WithContext(ctx)
-	for _, pkg := range pkgs {
+	for _, pkg := range packages {
 		pkg := pkg
 		eg.Go(func() error {
 			ctx, span := Tracer().Start(ctx, "lint "+path.Clean(pkg))

@@ -80,7 +80,7 @@ func (e *Engine) Container(
 		return nil, err
 	}
 
-	builder, err := build.NewBuilder(ctx, e.Dagger.Source)
+	builder, err := build.NewBuilder(ctx, e.Dagger.Source())
 	if err != nil {
 		return nil, err
 	}
@@ -165,31 +165,20 @@ func (e *Engine) Lint(
 	// +optional
 	all bool,
 ) error {
-	// Packages to lint
-	packages := []string{
-		".",
-		// FIXME: should the CI lint itself?
-		// FIXME: unsustainable to require keeping this list up to date by hand
-		"dev",
-		"dev/dirdiff",
-		"dev/go",
-		"dev/graphql",
-		"dev/shellcheck",
-		"dev/markdown",
-	}
-	// Packages that need codegen
-	codegen := []string{
-		"dev",
-		"dev/dirdiff",
-		"dev/go",
-		"dev/graphql",
-		"dev/shellcheck",
-		"dev/markdown",
-	}
-
-	return e.Dagger.Go().
-		WithCodegen(codegen).
-		Lint(ctx, packages, all)
+	_, err := dag.
+		Go(e.Dagger.Source()).
+		Lint(ctx, GoLintOpts{Packages: []string{
+			".",
+			// FIXME: should the CI lint itself?
+			// FIXME: unsustainable to require keeping this list up to date by hand
+			"dev",
+			"dev/dirdiff",
+			"dev/go",
+			"dev/graphql",
+			"dev/shellcheck",
+			"dev/markdown",
+		}})
+	return err
 }
 
 // Publish all engine images to a registry
@@ -277,7 +266,7 @@ func (e *Engine) Scan(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	ignoreFiles := dag.Directory().WithDirectory("/", e.Dagger.Source, DirectoryWithDirectoryOpts{
+	ignoreFiles := dag.Directory().WithDirectory("/", e.Dagger.Source(), DirectoryWithDirectoryOpts{
 		Include: []string{
 			".trivyignore",
 			".trivyignore.yml",

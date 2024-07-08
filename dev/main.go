@@ -10,7 +10,7 @@ import (
 
 // A dev environment for the DaggerDev Engine
 type DaggerDev struct {
-	Source  *Directory // +private
+	Src     *Directory // +private
 	Version *VersionInfo
 
 	// Can be used by nested clients to forward docker credentials to avoid
@@ -33,7 +33,7 @@ func New(
 	}
 
 	return &DaggerDev{
-		Source:    source,
+		Src:       source,
 		Version:   versionInfo,
 		DockerCfg: dockerCfg,
 	}, nil
@@ -73,28 +73,39 @@ func (dev *DaggerDev) CLI() *CLI {
 	return &CLI{Dagger: dev}
 }
 
+// Return the Dagger source code, after applying codegen
+func (dev *DaggerDev) Source() *Directory {
+	modules := []string{
+		"dev",
+		"dev/dirdiff",
+		"dev/go",
+		"dev/graphql",
+		"dev/shellcheck",
+		"dev/markdown",
+		"sdk/go",
+		"sdk/python",
+	}
+	// FIXME: parallelize
+	src := dev.Src
+	for _, module := range modules {
+		codegen := src.
+			AsModule(dagger.DirectoryAsModuleOpts{
+				SourceRootPath: module,
+			}).
+			GeneratedContextDirectory()
+		src = src.WithDirectory("", codegen)
+	}
+	return src
+}
+
 // Dagger's Go toolchain
 func (dev *DaggerDev) Go() *GoToolchain {
-	return &GoToolchain{Go: dag.Go(dev.Source)}
+	return &GoToolchain{Go: dag.Go(dev.Source())}
 }
 
 type GoToolchain struct {
 	// +private
 	*Go
-}
-
-// Run codegen (equivalent to `dagger develop`) in the specified subdirectories
-func (gtc *GoToolchain) WithCodegen(subdirs []string) *GoToolchain {
-	src := gtc.Source()
-	for _, subdir := range subdirs {
-		codegen := src.
-			AsModule(dagger.DirectoryAsModuleOpts{
-				SourceRootPath: subdir,
-			}).
-			GeneratedContextDirectory()
-		src = src.WithDirectory("", codegen)
-	}
-	return &GoToolchain{Go: dag.Go(src)}
 }
 
 func (gtc *GoToolchain) Env() *Container {
@@ -108,8 +119,8 @@ func (gtc *GoToolchain) Lint(
 	all bool,
 ) error {
 	_, err := gtc.Go.Lint(ctx, GoLintOpts{
-		Pkgs: packages,
-		All:  all,
+		Packages: packages,
+		All:      all,
 	})
 	return err
 }

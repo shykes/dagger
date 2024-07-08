@@ -12,7 +12,7 @@ type Helm struct {
 }
 
 func (h *Helm) Test(ctx context.Context) error {
-	helmChart := h.Dagger.Source.Directory("helm/dagger")
+	helmChart := h.Dagger.Source().Directory("helm/dagger")
 	helm := dag.Container().
 		From("alpine/helm:3.12.3").
 		WithDirectory("/tmp/dagger-helm", helmChart).
@@ -38,7 +38,7 @@ func (h *Helm) Publish(
 ) error {
 	version := strings.TrimPrefix(tag, "helm/chart/v")
 
-	helmChart := h.Dagger.Source.Directory("helm/dagger")
+	helmChart := h.Dagger.Source().Directory("helm/dagger")
 	helm := dag.Container().
 		From("alpine/helm:3.12.3").
 		WithDirectory("/tmp/dagger-helm", helmChart).
