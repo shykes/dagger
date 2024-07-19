@@ -1,22 +1,16 @@
 ## What is Dagger?
 
-Dagger is a tool that lets you replace your software project's artisanal scripts with a modern API and cross-language scripting engine.
+Dagger is a tool that runs CI/CD pipelines in containers, anywhere.
 
-1. Encapsulate all your project's tasks and workflows into simple functions, written in your programming language of choice
-2. Dagger packages your functions into a custom GraphQL API
-3. Run your functions from the CLI, your language interpreter, or a custom HTTP client
-4. Package your functions into a module, to reuse in your next project or share with the community
-5. Search the Daggerverse for existing modules, and import them into yours. All Dagger modules can reuse each other's functions - across language.
-
-## Benefits to app teams
-
-* Reduce complexity: even complex builds can be expressed as a few simple functions
-* No more "push and pray": everything CI can do, your dev environment can do too
-* Use the same language to develop your app and its scripts
-* Easy onboarding of new developers: if you can build, test and deploy - they can too.
-* Everything is cached by default: expect 2x to 10x speedups
-* Parity between dev and CI environments
-* Cross-team collaboration: reuse another team's workflows without learning their stack
+* Run your pipelines locally before pushing them to CI. (solves "push and pray")
+* Parity between dev and CI (solves "it worked on my machine")
+* Reproducible dev environments (solves "how do I get started?")
+* Use the same language to develop your apps and pipelines (solves "I don't know how our CI works")
+* Composable API extensions (solves "just one more script!")
+* Cross-language linking (solves "10 teams, 10 islands")
+* Simplify your pipelines (solves "scripts wrapping yaml wrapping more scripts")
+* Transparent caching. All operations are cached by default, and caching works the same in all environments.
+* Reduce CI lock-in. Dagger runs on all major CI platforms, no proprietary DSL needed.
 
 ## Benefits to platform teams
 
