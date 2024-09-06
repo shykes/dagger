@@ -13,6 +13,10 @@
     {
       "name": "sdk",
       "source": ".."
+    },
+    {
+      "name": "types",
+      "source": "../../modules/types"
     }
   ],
   "source": ".dagger",

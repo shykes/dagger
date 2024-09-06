@@ -10,11 +10,17 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type Sidecar interface {
+	dagger.DaggerObject
+	Bind(ctr *dagger.Container) *dagger.Container
+}
+
 func New(
 	// +optional
 	// +defaultPath="/"
 	// +ignore=["!sdk/go"]
 	source *dagger.Directory,
+	//engine dagger.TypesSidecar,
 	engine Sidecar,
 ) *GoSdk {
 	return &GoSdk{
@@ -25,12 +31,8 @@ func New(
 
 type GoSdk struct {
 	Source *dagger.Directory // +private
-	Engine Sidecar           // +private
-}
-
-type Sidecar interface {
-	DaggerObject
-	Bind(ctx context.Context, client *dagger.Container) *dagger.Container
+	//Engine dagger.TypesSidecar // +private
+	Engine Sidecar // +private
 }
 
 // Lint the Go SDK
@@ -68,31 +70,23 @@ func (t GoSdk) Lint(ctx context.Context) (rerr error) {
 
 // Test the Go SDK
 func (t GoSdk) Test(ctx context.Context) (rerr error) {
-	env, err := t.Env(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = env.
+	_, err := t.Env().
 		WithExec([]string{"go", "test", "-v", "-skip=TestProvision", "./..."}).
 		Sync(ctx)
 	return err
 }
 
-func (t GoSdk) Env(ctx context.Context) (*dagger.Container, error) {
-	env := dag.
+func (t GoSdk) Env() *dagger.Container {
+	return dag.
 		Go(t.Source).
 		Env().
-		WithWorkdir("sdk/go")
-	return t.Engine.Bind(ctx, env), nil
+		WithWorkdir("sdk/go").
+		With(t.Engine.Bind)
 }
 
 // Regenerate the Go SDK API
 func (t GoSdk) Generate(ctx context.Context) (*dagger.Directory, error) {
-	env, err := t.Env(ctx)
-	if err != nil {
-		return nil, err
-	}
-	generated := env.
+	generated := t.Env().
 		WithExec([]string{"go", "generate", "-v", "./..."}).
 		WithExec([]string{"go", "mod", "tidy"}).
 		Directory(".")
