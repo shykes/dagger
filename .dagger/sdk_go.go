@@ -11,8 +11,23 @@ import (
 	"github.com/dagger/dagger/.dagger/internal/dagger"
 )
 
+func NewGoSDK(
+	source *dagger.Directory,
+	engine *Engine,
+) *GoSDK {
+	return &GoSDK{
+		Source: source,
+		Engine: engine,
+	}
+}
+
 type GoSDK struct {
-	Dagger *DaggerDev // +private
+	// +optional
+	// +defaultPath="/"
+	// +ignore=["!sdk/go"]
+	Source *dagger.Directory // +private
+	Engine *Engine           // +private
+	Dagger *DaggerDev        // +private
 }
 
 // Lint the Go SDK
@@ -27,7 +42,7 @@ func (t GoSDK) Lint(ctx context.Context) (rerr error) {
 			span.End()
 		}()
 		return dag.
-			Go(t.Dagger.Source()).
+			Go(t.Source).
 			Lint(ctx, dagger.GoLintOpts{Packages: []string{"sdk/go"}})
 	})
 	eg.Go(func() (rerr error) {
@@ -38,7 +53,7 @@ func (t GoSDK) Lint(ctx context.Context) (rerr error) {
 			}
 			span.End()
 		}()
-		before := t.Dagger.Source()
+		before := t.Source
 		after, err := t.Generate(ctx)
 		if err != nil {
 			return err
@@ -50,32 +65,31 @@ func (t GoSDK) Lint(ctx context.Context) (rerr error) {
 
 // Test the Go SDK
 func (t GoSDK) Test(ctx context.Context) (rerr error) {
-	installer, err := t.Dagger.installer(ctx, "sdk")
+	env, err := t.Env(ctx)
 	if err != nil {
 		return err
 	}
-
-	output, err := t.Dagger.Go().Env().
-		With(installer).
-		WithWorkdir("sdk/go").
+	_, err = env.
 		WithExec([]string{"go", "test", "-v", "-skip=TestProvision", "./..."}).
-		Stdout(ctx)
-	if err != nil {
-		err = fmt.Errorf("test failed: %w\n%s", err, output)
-	}
+		Sync(ctx)
 	return err
+}
+
+func (t GoSDK) Env(ctx context.Context) (*dagger.Container, error) {
+	env := dag.
+		Go(t.Source).
+		Env().
+		WithWorkdir("sdk/go")
+	return t.Engine.Bind(ctx, env)
 }
 
 // Regenerate the Go SDK API
 func (t GoSDK) Generate(ctx context.Context) (*dagger.Directory, error) {
-	installer, err := t.Dagger.installer(ctx, "sdk")
+	env, err := t.Env(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	generated := t.Dagger.Go().Env().
-		With(installer).
-		WithWorkdir("sdk/go").
+	generated := env.
 		WithExec([]string{"go", "generate", "-v", "./..."}).
 		WithExec([]string{"go", "mod", "tidy"}).
 		Directory(".")
@@ -128,7 +142,7 @@ func (t GoSDK) Publish(
 		sourceTag:    tag,
 		sourcePath:   "sdk/go/",
 		sourceFilter: "if [ -f go.mod ]; then go mod edit -dropreplace github.com/dagger/dagger; fi",
-		sourceEnv:    t.Dagger.Go().Env(),
+		sourceEnv:    dag.Go(t.Source).Env(),
 		dest:         gitRepo,
 		destTag:      version,
 		username:     gitUserName,
@@ -142,7 +156,7 @@ func (t GoSDK) Publish(
 	if isVersioned {
 		if err := githubRelease(ctx, githubReleaseOpts{
 			tag:         tag,
-			notes:       sdkChangeNotes(t.Dagger.Src, "go", version),
+			notes:       sdkChangeNotes(t.Source, "go", version),
 			gitRepo:     gitRepoSource,
 			githubToken: githubToken,
 			dryRun:      dryRun,
