@@ -15,26 +15,26 @@ func New(
 	// +defaultPath="/"
 	// +ignore=["!sdk/go"]
 	source *dagger.Directory,
-	// /	engine Sidecar,
-) *Sdk {
-	return &Sdk{
+	engine Sidecar,
+) *GoSdk {
+	return &GoSdk{
 		Source: source,
-		///		Engine: engine,
+		Engine: engine,
 	}
 }
 
-type Sdk struct {
+type GoSdk struct {
 	Source *dagger.Directory // +private
 	Engine Sidecar           // +private
 }
 
 type Sidecar interface {
-	dagger.DaggerObject
-	Bind(context.Context, *dagger.Container) *dagger.Container
+	DaggerObject
+	Bind(ctx context.Context, client *dagger.Container) *dagger.Container
 }
 
 // Lint the Go SDK
-func (t Sdk) Lint(ctx context.Context) (rerr error) {
+func (t GoSdk) Lint(ctx context.Context) (rerr error) {
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() (rerr error) {
 		ctx, span := Tracer().Start(ctx, "lint the go source")
@@ -67,7 +67,7 @@ func (t Sdk) Lint(ctx context.Context) (rerr error) {
 }
 
 // Test the Go SDK
-func (t Sdk) Test(ctx context.Context) (rerr error) {
+func (t GoSdk) Test(ctx context.Context) (rerr error) {
 	env, err := t.Env(ctx)
 	if err != nil {
 		return err
@@ -78,16 +78,16 @@ func (t Sdk) Test(ctx context.Context) (rerr error) {
 	return err
 }
 
-func (t Sdk) Env(ctx context.Context) (*dagger.Container, error) {
+func (t GoSdk) Env(ctx context.Context) (*dagger.Container, error) {
 	env := dag.
 		Go(t.Source).
 		Env().
 		WithWorkdir("sdk/go")
-	return t.Engine.Bind(ctx, env)
+	return t.Engine.Bind(ctx, env), nil
 }
 
 // Regenerate the Go SDK API
-func (t Sdk) Generate(ctx context.Context) (*dagger.Directory, error) {
+func (t GoSdk) Generate(ctx context.Context) (*dagger.Directory, error) {
 	env, err := t.Env(ctx)
 	if err != nil {
 		return nil, err
@@ -100,7 +100,7 @@ func (t Sdk) Generate(ctx context.Context) (*dagger.Directory, error) {
 }
 
 // Test the publishing process
-func (t Sdk) TestPublish(ctx context.Context, tag string) error {
+func (t GoSdk) TestPublish(ctx context.Context, tag string) error {
 	return t.Publish(
 		ctx,
 		tag,
@@ -114,7 +114,7 @@ func (t Sdk) TestPublish(ctx context.Context, tag string) error {
 }
 
 // Publish the Go SDK
-func (t Sdk) Publish(
+func (t GoSdk) Publish(
 	ctx context.Context,
 	tag string,
 
@@ -139,30 +139,29 @@ func (t Sdk) Publish(
 ) error {
 	version, isVersioned := strings.CutPrefix(tag, "sdk/go/")
 
-	if err := gitPublish(ctx, gitPublishOpts{
-		sdk:          "go",
-		source:       gitRepoSource,
-		sourceTag:    tag,
-		sourcePath:   "sdk/go/",
-		sourceFilter: "if [ -f go.mod ]; then go mod edit -dropreplace github.com/dagger/dagger; fi",
-		sourceEnv:    dag.Go(t.Source).Env(),
-		dest:         gitRepo,
-		destTag:      version,
-		username:     gitUserName,
-		email:        gitUserEmail,
-		githubToken:  githubToken,
-		dryRun:       dryRun,
+	if err := dag.SDK().GitPublish(ctx, dagger.SDKGitPublishOpts{
+		Source:       gitRepoSource,
+		SourceTag:    tag,
+		SourcePath:   "sdk/go/",
+		SourceFilter: "if [ -f go.mod ]; then go mod edit -dropreplace github.com/dagger/dagger; fi",
+		SourceEnv:    dag.Go(t.Source).Env(),
+		Dest:         gitRepo,
+		DestTag:      version,
+		Username:     gitUserName,
+		Email:        gitUserEmail,
+		GithubToken:  githubToken,
+		DryRun:       dryRun,
 	}); err != nil {
 		return err
 	}
 
 	if isVersioned {
-		if err := githubRelease(ctx, githubReleaseOpts{
-			tag:         tag,
-			notes:       sdkChangeNotes(t.Source, "go", version),
-			gitRepo:     gitRepoSource,
-			githubToken: githubToken,
-			dryRun:      dryRun,
+		if err := dag.SDK().GithubRelease(ctx, dagger.SDKGithubReleaseOpts{
+			Tag:         tag,
+			Notes:       dag.SDK().ChangeNotes(t.Source, version),
+			GitRepo:     gitRepoSource,
+			GithubToken: githubToken,
+			DryRun:      dryRun,
 		}); err != nil {
 			return err
 		}
@@ -172,7 +171,7 @@ func (t Sdk) Publish(
 }
 
 // Bump the Go SDK's Engine dependency
-func (t Sdk) Bump(ctx context.Context, version string) (*dagger.Directory, error) {
+func (t GoSdk) Bump(ctx context.Context, version string) (*dagger.Directory, error) {
 	// trim leading v from version
 	version = strings.TrimPrefix(version, "v")
 

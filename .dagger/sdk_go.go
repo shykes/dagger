@@ -12,8 +12,11 @@ import (
 )
 
 func NewGoSDK(
+	// +optional
+	// +defaultPath="/"
+	// +ignore=["!sdk/go"]
 	source *dagger.Directory,
-	engine *Engine,
+	engine Sidecar,
 ) *GoSDK {
 	return &GoSDK{
 		Source: source,
@@ -22,11 +25,8 @@ func NewGoSDK(
 }
 
 type GoSDK struct {
-	// +optional
-	// +defaultPath="/"
-	// +ignore=["!sdk/go"]
 	Source *dagger.Directory // +private
-	Engine *Engine           // +private
+	Engine Sidecar           // +private
 	Dagger *DaggerDev        // +private
 }
 

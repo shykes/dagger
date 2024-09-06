@@ -1,6 +1,20 @@
 {
-  "name": "sdk",
+  "name": "go-sdk",
   "sdk": "go",
+  "dependencies": [
+    {
+      "name": "dirdiff",
+      "source": "../../modules/dirdiff"
+    },
+    {
+      "name": "go",
+      "source": "../../modules/go"
+    },
+    {
+      "name": "sdk",
+      "source": ".."
+    }
+  ],
   "source": ".dagger",
   "engineVersion": "v0.12.7"
 }
