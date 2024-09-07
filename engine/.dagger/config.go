@@ -7,10 +7,11 @@ import (
 	"strings"
 	"text/template"
 
+	"dagger/engine/internal/dagger"
+
 	"golang.org/x/exp/maps"
 
 	"github.com/dagger/dagger/.dagger/consts"
-	"github.com/dagger/dagger/.dagger/internal/dagger"
 )
 
 const (

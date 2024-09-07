@@ -6,12 +6,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"dagger/engine/internal/dagger"
+
+	"github.com/dagger/dagger/.dagger/build"
 	"github.com/dagger/dagger/engine/distconsts"
+
 	"github.com/moby/buildkit/identity"
 	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/dagger/dagger/.dagger/internal/dagger"
 )
 
 type Distro string
@@ -22,14 +24,25 @@ const (
 	DistroUbuntu = "ubuntu"
 )
 
-type Engine struct {
-	Dagger *DaggerDev // +private
+func New(
+	ctx context.Context,
+	// +optional
+	// +defaultPath="/"
+	// +ignore=[".git", "bin", "**/.DS_Store", "**/node_modules", "**/__pycache__", "**/.venv", "**/.mypy_cache", "**/.pytest_cache", "**/.ruff_cache", "sdk/python/dist", "sdk/python/**/sdk", "go.work", "go.work.sum", "**/*_test.go", "**/target", "**/deps", "**/cover", "**/_build"]
+	source *dagger.Directory,
+) *Engine {
+	return &Engine{
+		Source: source,
+	}
+}
 
+type Engine struct {
 	Args   []string // +private
 	Config []string // +private
 
 	Trace bool // +private
 
+	Source       *dagger.Directory   // +private
 	Race         bool                // +private
 	GpuSupport   bool                // +private
 	Image        *Distro             // +private
@@ -102,7 +115,7 @@ func (e *Engine) Container(ctx context.Context) (*dagger.Container, error) {
 		return nil, err
 	}
 
-	builder, err := newBuilder(ctx, e.Dagger.Source())
+	builder, err := build.NewBuilder(ctx, e.Source)
 	if err != nil {
 		return nil, err
 	}

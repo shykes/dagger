@@ -1,4 +1,4 @@
-package build
+package main
 
 import (
 	"context"
@@ -13,12 +13,11 @@ import (
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/sync/errgroup"
 
+	"dagger/engine/internal/dagger"
+
 	"github.com/dagger/dagger/.dagger/consts"
-	"github.com/dagger/dagger/.dagger/internal/dagger"
 	"github.com/dagger/dagger/.dagger/util"
 )
-
-var dag = dagger.Connect()
 
 type Builder struct {
 	source *dagger.Directory
@@ -35,45 +34,13 @@ type Builder struct {
 	race bool
 }
 
-func NewBuilder(ctx context.Context, source *dagger.Directory) (*Builder, error) {
-	source = dag.Directory().WithDirectory("/", source, dagger.DirectoryWithDirectoryOpts{
-		Exclude: []string{
-			".git",
-			"bin",
-			"**/.DS_Store",
-
-			// node
-			"**/node_modules",
-
-			// python
-			"**/__pycache__",
-			"**/.venv",
-			"**/.mypy_cache",
-			"**/.pytest_cache",
-			"**/.ruff_cache",
-			"sdk/python/dist",
-			"sdk/python/**/sdk",
-
-			// go
-			// go.work is ignored so that you can use ../foo during local dev and let
-			// this exclude rule reflect what the PR would run with, as a reminder to
-			// actually bump dependencies
-			"go.work",
-			"go.work.sum",
-
-			// don't rebuild on test-only-changes
-			"**/*_test.go",
-
-			// rust
-			"**/target",
-
-			// elixir
-			"**/deps",
-			"**/cover",
-			"**/_build",
-		},
-	})
-
+func newBuilder(
+	ctx context.Context,
+	// +optional
+	// +defaultPath="/"
+	// +ignore=[".git", "bin", "**/.DS_Store", "**/node_modules", "**/__pycache__", "**/.venv", "**/.mypy_cache", "**/.pytest_cache", "**/.ruff_cache", "sdk/python/dist", "sdk/python/**/sdk", "go.work", "go.work.sum", "**/*_test.go", "**/target", "**/deps", "**/cover", "**/_build"]
+	source *dagger.Directory,
+) (*Builder, error) {
 	return &Builder{
 		source:       source,
 		platform:     dagger.Platform(platforms.DefaultString()),
