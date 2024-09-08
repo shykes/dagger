@@ -3,8 +3,20 @@
   "sdk": "go",
   "dependencies": [
     {
+      "name": "engine",
+      "source": "../../engine"
+    },
+    {
       "name": "go",
       "source": "../../modules/go"
+    },
+    {
+      "name": "types",
+      "source": "../../modules/types"
+    },
+    {
+      "name": "wolfi",
+      "source": "../../modules/wolfi"
     }
   ],
   "source": ".dagger",
