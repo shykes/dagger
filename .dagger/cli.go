@@ -7,7 +7,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/dagger/dagger/.dagger/build"
 	"github.com/dagger/dagger/.dagger/internal/dagger"
 )
 
@@ -17,22 +16,14 @@ type CLI struct {
 
 // Build the CLI binary
 func (cli *CLI) Binary(
-	ctx context.Context,
-
 	// +optional
 	platform dagger.Platform,
-) (*dagger.File, error) {
-	builder, err := build.NewBuilder(ctx, cli.Dagger.Source())
-	if err != nil {
-		return nil, err
-	}
-	builder = builder.
-		WithVersion(cli.Dagger.Version.String()).
-		WithTag(cli.Dagger.Tag)
-	if platform != "" {
-		builder = builder.WithPlatform(platform)
-	}
-	return builder.CLI(ctx)
+) *dagger.File {
+	return dag.DaggerCli().Binary(dagger.DaggerCliBinaryOpts{
+		Platform: platform,
+		Version:  cli.Dagger.Version.String(),
+		Tag:      cli.Dagger.Tag,
+	})
 }
 
 const (
@@ -117,17 +108,8 @@ func (cli *CLI) TestPublish(ctx context.Context) error {
 	// step in PRs and locally and we use goreleaser pro features that require
 	// a key which is private. For now, this just builds the CLI for the same
 	// targets so there's at least some coverage
-
 	oses := []string{"linux", "windows", "darwin"}
 	arches := []string{"amd64", "arm64", "arm"}
-
-	builder, err := build.NewBuilder(ctx, cli.Dagger.Source())
-	if err != nil {
-		return err
-	}
-	builder = builder.
-		WithVersion(cli.Dagger.Version.String()).
-		WithTag(cli.Dagger.Tag)
 
 	var eg errgroup.Group
 	for _, os := range oses {
@@ -135,25 +117,20 @@ func (cli *CLI) TestPublish(ctx context.Context) error {
 			if arch == "arm" && os == "darwin" {
 				continue
 			}
-
 			platform := os + "/" + arch
 			if arch == "arm" {
 				platform += "/v7" // not always correct but not sure of better way
 			}
-
 			eg.Go(func() error {
-				f, err := builder.
-					WithPlatform(dagger.Platform(platform)).
-					CLI(ctx)
-				if err != nil {
-					return err
-				}
-				_, err = f.Sync(ctx)
+				_, err := dag.DaggerCli().
+					Binary(dagger.DaggerCliBinaryOpts{
+						Platform: platform,
+					}).
+					Sync(ctx)
 				return err
 			})
 		}
 	}
-
 	eg.Go(func() error {
 		env, err := publishEnv(ctx)
 		if err != nil {
@@ -162,7 +139,6 @@ func (cli *CLI) TestPublish(ctx context.Context) error {
 		_, err = env.Sync(ctx)
 		return err
 	})
-
 	return eg.Wait()
 }
 

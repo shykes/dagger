@@ -96,10 +96,6 @@ func (build *Builder) WithGPUSupport() *Builder {
 	return &b
 }
 
-func (build *Builder) CLI(ctx context.Context) (*dagger.File, error) {
-	return build.binary("./cmd/dagger", true, build.race), nil
-}
-
 func (build *Builder) Engine(ctx context.Context) (*dagger.Container, error) {
 	eg, ctx := errgroup.WithContext(ctx)
 
@@ -271,10 +267,6 @@ func (build *Builder) Engine(ctx context.Context) (*dagger.Container, error) {
 	}
 
 	return ctr, nil
-}
-
-func (build *Builder) CodegenBinary() *dagger.File {
-	return build.binary("./cmd/codegen", false, false)
 }
 
 func (build *Builder) engineBinary(race bool) *dagger.File {

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dagger/dagger/.dagger/build"
-	"github.com/dagger/dagger/.dagger/consts"
 	"github.com/dagger/dagger/.dagger/internal/dagger"
 )
 
@@ -64,24 +62,9 @@ func (dev *DaggerDev) installer(ctx context.Context, name string) (func(*dagger.
 	}, nil
 }
 
-func (dev *DaggerDev) introspection(ctx context.Context, engine *Engine) (*dagger.File, error) {
-
-	builder, err := build.NewBuilder(ctx, dev.Source())
-	if err != nil {
-		return nil, err
-	}
-	client := dag.
-		Container().
-		From(consts.AlpineImage).
-		WithFile("/usr/local/bin/codegen", builder.CodegenBinary())
-	client, err = engine.Bind(ctx, client)
-	if err != nil {
-		return nil, err
-	}
-	return client.
-			WithExec([]string{"codegen", "introspect", "-o", "/schema.json"}).
-			File("/schema.json"),
-		nil
+// FIXME: temporary facade
+func (dev *DaggerDev) introspection(engine *Engine) *dagger.File {
+	return dag.Codegen().Introspect(engine.AsCodegenSidecar)
 }
 
 func sdkChangeNotes(src *dagger.Directory, sdk string, version string) *dagger.File {

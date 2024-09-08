@@ -130,13 +130,14 @@ func (e *Engine) Container(ctx context.Context) (*dagger.Container, error) {
 	ctr = ctr.
 		WithFile("/etc/dagger/engine.toml", cfg).
 		WithFile("/usr/local/bin/dagger-entrypoint.sh", entrypoint).
-		WithEntrypoint([]string{"dagger-entrypoint.sh"})
-	cli, err := e.CLI(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ctr = ctr.
-		WithFile("/usr/local/bin/dagger", cli).
+		WithEntrypoint([]string{"dagger-entrypoint.sh"}).
+		WithFile(
+			"/usr/local/bin/dagger",
+			dag.DaggerCli().Binary(dagger.DaggerCliBinaryOpts{
+				Platform: e.Platform,
+				Version:  e.Version,
+				Tag:      e.Tag,
+			})).
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "unix:///var/run/buildkit/buildkitd.sock")
 
 	return ctr, nil
@@ -172,36 +173,33 @@ func (e *Engine) builder(ctx context.Context) (*Builder, error) {
 	return builder, nil
 }
 
-// Build the dagger CLI
-func (e *Engine) CLI(ctx context.Context) (*dagger.File, error) {
-	builder, err := e.builder(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return builder.CLI(ctx)
-}
-
 // Instantiate the engine as a service, and bind it to the given client
-func (e *Engine) Bind(ctx context.Context, client *dagger.Container) (*dagger.Container, error) {
-	engineSvc, err := e.Service(ctx)
-	if err != nil {
-		return nil, err
-	}
-	cliBinary, err := e.CLI(ctx)
-	if err != nil {
-		return nil, err
-	}
-	client = client.
-		WithServiceBinding("dagger-engine", engineSvc).
+func (e *Engine) Bind(ctx context.Context, client *dagger.Container) *dagger.Container {
+	return client.
+		WithServiceBinding("dagger-engine", func() *dagger.Service {
+			svc, err := e.Service(ctx)
+			if err != nil {
+				// Each function call gets its own container, so this is ok.
+				// It makes the code simpler by avoiding useless plumbing
+				panic(err)
+			}
+			return svc
+		}()).
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "tcp://dagger-engine:1234").
-		WithMountedFile("/.dagger-cli", cliBinary).
+		WithMountedFile("/.dagger-cli", dag.DaggerCli().Binary(dagger.DaggerCliBinaryOpts{
+			Platform: e.Platform,
+			Version:  e.Version,
+			Tag:      e.Tag,
+		})).
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_CLI_BIN", "/.dagger-cli").
-		WithExec([]string{"ln", "-s", "/.dagger-cli", "/usr/local/bin/dagger"})
-	if e.DockerConfig != nil {
-		// this avoids rate limiting in our ci tests
-		client = client.WithMountedSecret("/root/.docker/config.json", e.DockerConfig)
-	}
-	return client, nil
+		WithExec([]string{"ln", "-s", "/.dagger-cli", "/usr/local/bin/dagger"}).
+		With(func(c *dagger.Container) *dagger.Container {
+			if e.DockerConfig == nil {
+				return c
+			}
+			// this avoids rate limiting in our ci tests
+			return c.WithMountedSecret("/root/.docker/config.json", e.DockerConfig)
+		})
 }
 
 func (e *Engine) cacheVolume() *dagger.CacheVolume {

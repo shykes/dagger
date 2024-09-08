@@ -3,10 +3,6 @@
   "sdk": "go",
   "dependencies": [
     {
-      "name": "engine",
-      "source": "../../engine"
-    },
-    {
       "name": "go",
       "source": "../../modules/go"
     },

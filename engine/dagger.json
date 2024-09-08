@@ -3,6 +3,14 @@
   "sdk": "go",
   "dependencies": [
     {
+      "name": "codegen",
+      "source": "../cmd/codegen"
+    },
+    {
+      "name": "dagger-cli",
+      "source": "../cmd/dagger"
+    },
+    {
       "name": "dirdiff",
       "source": "../modules/dirdiff"
     },

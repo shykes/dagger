@@ -71,6 +71,12 @@ func New(
 		GitDir:    gitDir,
 	}
 
+	// FIXME shykes
+	modules := dag.Supermod(source).Submodules(ctx, dagger.SupermodSubmodulesOpts{
+		Exclude: []string{
+			"docs/.*",
+			"core/integration/.*",
+		}})
 	modules, err := dag.Dirdiff().Find(ctx, dev.Src, "dagger.json")
 	if err != nil {
 		return nil, err
@@ -285,11 +291,6 @@ func (gtc *GoToolchain) Lint(
 	packages []string,
 ) error {
 	return gtc.Go.Lint(ctx, dagger.GoLintOpts{Packages: packages})
-}
-
-// Develop the Dagger engine container
-func (dev *DaggerDev) Engine() *Engine {
-	return &Engine{Dagger: dev}
 }
 
 // Develop the Dagger documentation

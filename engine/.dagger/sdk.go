@@ -95,7 +95,9 @@ func (build *Builder) typescriptSDKContent(ctx context.Context) (*sdkContent, er
 	})
 	sdkCtrTarball := dag.Container().
 		WithRootfs(rootfs).
-		WithFile("/codegen", build.CodegenBinary()).
+		WithFile("/codegen", dag.Codegen().Binary(dagger.CodegenBinaryOpts{
+			Platform: build.platform,
+		})).
 		AsTarball(dagger.ContainerAsTarballOpts{
 			ForcedCompression: dagger.Uncompressed,
 		})
@@ -129,7 +131,9 @@ func (build *Builder) goSDKContent(ctx context.Context) (*sdkContent, error) {
 
 	sdkCtrTarball := base.
 		WithEnvVariable("GOTOOLCHAIN", "auto").
-		WithFile("/usr/local/bin/codegen", build.CodegenBinary()).
+		WithFile("/usr/local/bin/codegen", dag.Codegen().Binary(dagger.CodegenBinaryOpts{
+			Platform: build.platform,
+		})).
 		AsTarball(dagger.ContainerAsTarballOpts{
 			ForcedCompression: dagger.Uncompressed,
 		})
