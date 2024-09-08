@@ -1,18 +1,14 @@
 {
-  "name": "engine",
+  "name": "cmd",
   "sdk": "go",
   "dependencies": [
-    {
-      "name": "dirdiff",
-      "source": "../modules/dirdiff"
-    },
     {
       "name": "go",
       "source": "../modules/go"
     },
     {
-      "name": "supermod",
-      "source": "../modules/supermod"
+      "name": "dirdiff",
+      "source": "../modules/dirdiff"
     }
   ],
   "source": ".dagger",

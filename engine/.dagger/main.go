@@ -3,12 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"path/filepath"
-	"strings"
 
 	"dagger/engine/internal/dagger"
 
-	"github.com/dagger/dagger/.dagger/build"
 	"github.com/dagger/dagger/engine/distconsts"
 
 	"github.com/moby/buildkit/identity"
@@ -30,9 +27,15 @@ func New(
 	// +defaultPath="/"
 	// +ignore=[".git", "bin", "**/.DS_Store", "**/node_modules", "**/__pycache__", "**/.venv", "**/.mypy_cache", "**/.pytest_cache", "**/.ruff_cache", "sdk/python/dist", "sdk/python/**/sdk", "go.work", "go.work.sum", "**/*_test.go", "**/target", "**/deps", "**/cover", "**/_build"]
 	source *dagger.Directory,
+	// +optional
+	version string,
+	// +optional
+	tag string,
 ) *Engine {
 	return &Engine{
-		Source: source,
+		Source:  source,
+		Version: version,
+		Tag:     tag,
 	}
 }
 
@@ -43,6 +46,8 @@ type Engine struct {
 	Trace bool // +private
 
 	Source       *dagger.Directory   // +private
+	Version      string              // +private
+	Tag          string              // +private
 	Race         bool                // +private
 	GpuSupport   bool                // +private
 	Image        *Distro             // +private
@@ -114,19 +119,41 @@ func (e *Engine) Container(ctx context.Context) (*dagger.Container, error) {
 	if err != nil {
 		return nil, err
 	}
+	builder, err := e.builder(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctr, err := builder.Engine(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctr = ctr.
+		WithFile("/etc/dagger/engine.toml", cfg).
+		WithFile("/usr/local/bin/dagger-entrypoint.sh", entrypoint).
+		WithEntrypoint([]string{"dagger-entrypoint.sh"})
+	cli, err := e.CLI(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctr = ctr.
+		WithFile("/usr/local/bin/dagger", cli).
+		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "unix:///var/run/buildkit/buildkitd.sock")
 
-	builder, err := build.NewBuilder(ctx, e.Source)
+	return ctr, nil
+}
+
+func (e *Engine) builder(ctx context.Context) (*Builder, error) {
+	builder, err := newBuilder(ctx, e.Source)
 	if err != nil {
 		return nil, err
 	}
 	builder = builder.
-		WithVersion(e.Dagger.Version.String()).
-		WithTag(e.Dagger.Tag).
+		WithVersion(e.Version).
+		WithTag(e.Tag).
 		WithRace(e.Race)
-	if e.Platform != "" {
-		builder = builder.WithPlatform(e.Platform)
+	if p := e.Platform; p != "" {
+		builder = builder.WithPlatform(p)
 	}
-
 	if e.Image != nil {
 		switch *e.Image {
 		case DistroAlpine:
@@ -139,37 +166,20 @@ func (e *Engine) Container(ctx context.Context) (*dagger.Container, error) {
 			return nil, fmt.Errorf("unknown base image type %s", *e.Image)
 		}
 	}
-
 	if e.GpuSupport {
 		builder = builder.WithGPUSupport()
 	}
-
-	ctr, err := builder.Engine(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ctr = ctr.
-		WithFile(engineTomlPath, cfg).
-		WithFile(engineEntrypointPath, entrypoint).
-		WithEntrypoint([]string{filepath.Base(engineEntrypointPath)})
-
-	cli, err := builder.CLI(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ctr = ctr.
-		WithFile(cliPath, cli).
-		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "unix://"+engineUnixSocketPath)
-
-	return ctr, nil
+	return builder, nil
 }
 
-// A sidecar service with zeroconf binding
-//type Sidecar interface {
-//	DaggerObject
-//	Service(context.Context) (*dagger.Service, error)
-//	Bind(context.Context, *dagger.Container) (*dagger.Container, error)
-//}
+// Build the dagger CLI
+func (e *Engine) CLI(ctx context.Context) (*dagger.File, error) {
+	builder, err := e.builder(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return builder.CLI(ctx)
+}
 
 // Instantiate the engine as a service, and bind it to the given client
 func (e *Engine) Bind(ctx context.Context, client *dagger.Container) (*dagger.Container, error) {
@@ -177,17 +187,16 @@ func (e *Engine) Bind(ctx context.Context, client *dagger.Container) (*dagger.Co
 	if err != nil {
 		return nil, err
 	}
-	cliBinary, err := e.Dagger.CLI().Binary(ctx, "")
+	cliBinary, err := e.CLI(ctx)
 	if err != nil {
 		return nil, err
 	}
-	cliBinaryPath := "/.dagger-cli"
 	client = client.
 		WithServiceBinding("dagger-engine", engineSvc).
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "tcp://dagger-engine:1234").
-		WithMountedFile(cliBinaryPath, cliBinary).
-		WithEnvVariable("_EXPERIMENTAL_DAGGER_CLI_BIN", cliBinaryPath).
-		WithExec([]string{"ln", "-s", cliBinaryPath, "/usr/local/bin/dagger"})
+		WithMountedFile("/.dagger-cli", cliBinary).
+		WithEnvVariable("_EXPERIMENTAL_DAGGER_CLI_BIN", "/.dagger-cli").
+		WithExec([]string{"ln", "-s", "/.dagger-cli", "/usr/local/bin/dagger"})
 	if e.DockerConfig != nil {
 		// this avoids rate limiting in our ci tests
 		client = client.WithMountedSecret("/root/.docker/config.json", e.DockerConfig)
@@ -197,8 +206,8 @@ func (e *Engine) Bind(ctx context.Context, client *dagger.Container) (*dagger.Co
 
 func (e *Engine) cacheVolume() *dagger.CacheVolume {
 	var name string
-	if v := e.Dagger.Version; v != nil {
-		name = "dagger-dev-engine-state-" + v.String()
+	if e.Version != "" {
+		name = "dagger-dev-engine-state-" + e.Version
 	} else {
 		name = "dagger-dev-engine-state-" + identity.NewID()
 	}
@@ -241,25 +250,18 @@ func (e *Engine) Lint(
 ) error {
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		allPkgs, err := e.Dagger.containing(ctx, "go.mod")
+		exclude := []string{"docs/.*", "core/integration/.*"}
+		// Run dagger module codegen recursively before linting
+		src := dag.Supermod(e.Source).
+			DevelopAll(dagger.SupermodDevelopAllOpts{Exclude: exclude}).
+			Source()
+		// Lint each go module
+		pkgs, err := dag.Dirdiff().
+			Find(ctx, src, "go.mod", dagger.DirdiffFindOpts{Exclude: exclude})
 		if err != nil {
 			return err
 		}
-
-		var pkgs []string
-		for _, pkg := range allPkgs {
-			if strings.HasPrefix(pkg, "docs/") {
-				continue
-			}
-			if strings.HasPrefix(pkg, "core/integration/") {
-				continue
-			}
-			pkgs = append(pkgs, pkg)
-		}
-
-		return dag.
-			Go(e.Dagger.WithModCodegen().Source()).
-			Lint(ctx, dagger.GoLintOpts{Packages: pkgs})
+		return dag.Go(src).Lint(ctx, dagger.GoLintOpts{Packages: pkgs})
 	})
 	eg.Go(func() error {
 		return e.LintGenerate(ctx)
@@ -268,30 +270,32 @@ func (e *Engine) Lint(
 	return eg.Wait()
 }
 
+func (e *Engine) Env() *dagger.Container {
+	return dag.Go(e.Source).Env()
+}
+
 // Generate any engine-related files
 // Note: this is codegen of the 'go generate' variety, not 'dagger develop'
 func (e *Engine) Generate() *dagger.Directory {
-	generated := e.Dagger.Go().Env().
-		WithoutDirectory("sdk") // sdk generation happens separately
-
-	// protobuf dependencies
-	generated = generated.
-		WithExec([]string{"apk", "add", "protoc=~3.21.12"}).
+	return e.Env().
+		WithoutDirectory("sdk"). // sdk generation happens separately
+		// protobuf dependencies
+		WithExec([]string{"apk", "add", "protoc=~3.21.12"}). // FIXME: use common apko module
 		WithExec([]string{"go", "install", "google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.2"}).
 		WithExec([]string{"go", "install", "github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.2"}).
-		WithExec([]string{"go", "install", "google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.4.0"})
-
-	generated = generated.
-		WithExec([]string{"go", "generate", "-v", "./..."})
-
-	return generated.Directory(".")
+		WithExec([]string{"go", "install", "google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.4.0"}).
+		WithExec([]string{"go", "generate", "-v", "./..."}).
+		Directory(".")
 }
 
 // Lint any generated engine-related files
 func (e *Engine) LintGenerate(ctx context.Context) error {
-	before := e.Dagger.Go().Env().WithoutDirectory("sdk").Directory(".")
-	after := e.Generate()
-	return dag.Dirdiff().AssertEqual(ctx, before, after, []string{"."})
+	return dag.Dirdiff().AssertEqual(
+		ctx,
+		e.Env().WithoutDirectory("sdk").Directory("."),
+		e.Generate(),
+		[]string{"."},
+	)
 }
 
 var targets = []struct {
@@ -441,7 +445,7 @@ func (e *Engine) Scan(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	ignoreFiles := dag.Directory().WithDirectory("/", e.Dagger.Source(), dagger.DirectoryWithDirectoryOpts{
+	ignoreFiles := dag.Directory().WithDirectory("/", e.Source, dagger.DirectoryWithDirectoryOpts{
 		Include: []string{
 			".trivyignore",
 			".trivyignore.yml",

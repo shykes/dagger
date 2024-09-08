@@ -1,4 +1,4 @@
-package build
+package main
 
 import (
 	"context"
@@ -7,8 +7,9 @@ import (
 	"github.com/dagger/dagger/engine/distconsts"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"dagger/engine/internal/dagger"
+
 	"github.com/dagger/dagger/.dagger/consts"
-	"github.com/dagger/dagger/.dagger/internal/dagger"
 )
 
 type sdkContent struct {

@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/containerd/platforms"
@@ -72,7 +71,7 @@ func New(
 		GitDir:    gitDir,
 	}
 
-	modules, err := dev.containing(ctx, "dagger.json")
+	modules, err := dag.Dirdiff().Find(ctx, dev.Src, "dagger.json")
 	if err != nil {
 		return nil, err
 	}
@@ -265,25 +264,6 @@ func (dev *DaggerDev) Source() *dagger.Directory {
 		src = src.WithDirectory(module, layer)
 	}
 	return src
-}
-
-func (dev *DaggerDev) containing(ctx context.Context, filename string) ([]string, error) {
-	entries, err := dev.Src.Glob(ctx, "**/"+filename)
-	if err != nil {
-		return nil, err
-	}
-
-	var parents []string
-	for _, entry := range entries {
-		entry = filepath.Clean(entry)
-		parent := strings.TrimSuffix(entry, filename)
-		if parent == "" {
-			parent = "."
-		}
-		parents = append(parents, parent)
-	}
-
-	return parents, nil
 }
 
 // Dagger's Go toolchain

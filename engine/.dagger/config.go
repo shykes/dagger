@@ -14,13 +14,7 @@ import (
 	"github.com/dagger/dagger/.dagger/consts"
 )
 
-const (
-	engineTomlPath       = "/etc/dagger/engine.toml"
-	engineEntrypointPath = "/usr/local/bin/dagger-entrypoint.sh"
-	engineUnixSocketPath = "/var/run/buildkit/buildkitd.sock"
-	cliPath              = "/usr/local/bin/dagger"
-)
-
+// FIXME: move to a real shell script, get rid of templating
 const engineEntrypointTmpl = `#!/bin/sh
 set -e
 
@@ -43,7 +37,7 @@ fi
 # many systems default to 1024 which is far too low
 ulimit -n 1048576
 
-exec {{.EngineBin}} --config {{.EngineConfig}} {{ range $key := .EntrypointArgKeys -}}--{{ $key }}="{{ index $.EntrypointArgs $key }}" {{ end -}} "$@"
+exec {{.EngineBin}} --config /etc/dagger/engine.toml {{ range $key := .EntrypointArgKeys -}}--{{ $key }}="{{ index $.EntrypointArgs $key }}" {{ end -}} "$@"
 `
 
 const engineConfigTmpl = `
@@ -79,7 +73,6 @@ func generateEntrypoint(kvs []string) (*dagger.File, error) {
 	buf := new(bytes.Buffer)
 	err := tmpl.Execute(buf, entrypointTmplParams{
 		EngineBin:         consts.EngineServerPath,
-		EngineConfig:      engineTomlPath,
 		EntrypointArgs:    opts,
 		EntrypointArgKeys: keys,
 	})
