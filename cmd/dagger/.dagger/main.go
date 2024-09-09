@@ -199,3 +199,31 @@ func (cli DaggerCli) Goreleaser() *dagger.Container {
 		WithExec([]string{"sh", "-c", "nix-prefetch-url 2>&1 | grep 'error: you must specify a URL'"}).
 		WithWorkdir("/app")
 }
+
+// Generate a markdown CLI reference doc
+func (cli DaggerCli) Reference(
+	ctx context.Context,
+	// +optional
+	// +defaultPath="/"
+	// +ignore_0.13=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
+	// stopgap:
+	// +ignore=["bin", "**/node_modules", "**/.venv", "**/__pycache__"]
+	source *dagger.Directory,
+	// +optional
+	frontmatter string,
+	// +optional
+	// Include experimental commands
+	includeExperimental bool,
+) *dagger.File {
+	cmd := []string{"go", "run", "./cmd/dagger", "gen", "--output", "cli.mdx"}
+	if includeExperimental {
+		cmd = append(cmd, "--include-experimental")
+	}
+	if frontmatter != "" {
+		cmd = append(cmd, "--frontmatter", frontmatter)
+	}
+	return dag.Go(source).
+		Env().
+		WithExec(cmd).
+		File("cli.mdx")
+}
