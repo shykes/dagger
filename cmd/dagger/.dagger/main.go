@@ -19,7 +19,9 @@ type DaggerCli struct{}
 func (cli DaggerCli) Build(
 	// +optional
 	// +defaultPath="/"
-	// +ignore=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go"]
+	// +ignore_0.13=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
+	// stopgap:
+	// +ignore=["bin", "**/node_modules", "**/.venv", "**/__pycache__"]
 	source *dagger.Directory,
 	// +optional
 	version string,
@@ -42,9 +44,13 @@ func (cli DaggerCli) Build(
 }
 
 func (cli DaggerCli) Binary(
+	ctx context.Context,
+
 	// +optional
 	// +defaultPath="/"
-	// +ignore=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go"]
+	// +ignore_0.13=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
+	// stopgap:
+	// +ignore=["bin", "**/node_modules", "**/.venv", "**/__pycache__"]
 	source *dagger.Directory,
 	// +optional
 	version string,
@@ -53,10 +59,20 @@ func (cli DaggerCli) Binary(
 	// +optional
 	// +default="current"
 	platform dagger.Platform,
-) *dagger.File {
-	return cli.
+) (*dagger.File, error) {
+	bin := cli.
 		Build(source, version, tag, platform).
-		File("bin/dagger")
+		Directory("bin")
+	// The binary might be called dagger or dagger.exe
+	files, err := bin.
+		Glob(ctx, "dagger*")
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("No matching binary in %q", files)
+	}
+	return bin.File(files[0]), nil
 }
 
 // Publish the CLI using GoReleaser
@@ -64,7 +80,9 @@ func (cli DaggerCli) Publish(
 	ctx context.Context,
 	// +optional
 	// +defaultPath="/"
-	// +ignore=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
+	// +ignore_0.13=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
+	// stopgap:
+	// +ignore=["bin", "**/node_modules", "**/.venv", "**/__pycache__"]
 	source *dagger.Directory,
 	// +optional
 	version string,
@@ -79,7 +97,7 @@ func (cli DaggerCli) Publish(
 	awsBucket *dagger.Secret,
 	artefactsFQDN string,
 ) error {
-	ctr := goreleaser().WithMountedDirectory("", source)
+	ctr := cli.Goreleaser().WithMountedDirectory("", source)
 	// Verify tag
 	_, err := ctr.WithExec([]string{"git", "show-ref", "--verify", "refs/tags/" + tag}).Sync(ctx)
 	if err != nil {
@@ -126,7 +144,9 @@ func (cli DaggerCli) TestPublish(
 	ctx context.Context,
 	// +optional
 	// +defaultPath="/"
-	// +BLAignore=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
+	// +ignore_0.13=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
+	// stopgap:
+	// +ignore=["bin", "**/node_modules", "**/.venv", "**/__pycache__"]
 	source *dagger.Directory,
 	// +optional
 	version string,
@@ -152,20 +172,20 @@ func (cli DaggerCli) TestPublish(
 				platform += "/v7" // not always correct but not sure of better way
 			}
 			eg.Go(func() error {
-				_, err := cli.Binary(source, version, tag, dagger.Platform(platform)).Sync(ctx)
+				_, err := cli.Binary(ctx, source, version, tag, dagger.Platform(platform))
 				return err
 			})
 		}
 	}
 	// Test that the goreleaser environment is not broken
 	eg.Go(func() error {
-		_, err := goreleaser().Sync(ctx)
+		_, err := cli.Goreleaser().Sync(ctx)
 		return err
 	})
 	return eg.Wait()
 }
 
-func goreleaser() *dagger.Container {
+func (cli DaggerCli) Goreleaser() *dagger.Container {
 	return dag.Container().
 		From(fmt.Sprintf("ghcr.io/goreleaser/goreleaser-pro:%s-pro", goReleaserVersion)).
 		WithEntrypoint([]string{}).
