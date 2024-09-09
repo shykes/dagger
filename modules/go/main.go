@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"strings"
 
@@ -198,6 +199,60 @@ func (p Go) Build(
 		env = env.WithExec(append(cmd, pkg))
 	}
 	return dag.Directory().WithDirectory(output, env.Directory(output)), nil
+}
+
+// Build a main package, and return the compiled binary
+func (p Go) Binary(
+	ctx context.Context,
+	// Which package to build
+	pkg string,
+	// Pass arguments to 'go build -ldflags''
+	// +optional
+	ldflags []string,
+	// Add string value definition of the form importpath.name=value
+	// Example: "github.com/my/module.Foo=bar"
+	// +optional
+	values []string,
+	// Enable race detector. Implies cgo=true
+	// +optional
+	race bool,
+	// Disable symbol table
+	// +optional
+	noSymbols bool,
+	// Disable DWARF generation
+	// +optional
+	noDwarf bool,
+	// Enable CGO
+	// +optional
+	cgo bool,
+	// Target build platform
+	// +optional
+	platform dagger.Platform,
+) (*dagger.File, error) {
+	dir, err := p.Build(
+		ctx,
+		[]string{pkg},
+		ldflags,
+		values,
+		race,
+		noSymbols,
+		noDwarf,
+		cgo,
+		platform,
+		"./bin/",
+	)
+	if err != nil {
+		return nil, err
+	}
+	// The binary might be called dagger or dagger.exe
+	files, err := dir.Glob(ctx, "bin/"+path.Base(pkg)+"*")
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("No matching binary in %q", files)
+	}
+	return dir.File(files[0]), nil
 }
 
 // List packages matching the specified critera

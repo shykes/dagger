@@ -45,7 +45,6 @@ func (cli DaggerCli) Build(
 
 func (cli DaggerCli) Binary(
 	ctx context.Context,
-
 	// +optional
 	// +defaultPath="/"
 	// +ignore_0.13=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
@@ -57,22 +56,18 @@ func (cli DaggerCli) Binary(
 	// +optional
 	tag string,
 	// +optional
-	// +default="current"
 	platform dagger.Platform,
-) (*dagger.File, error) {
-	bin := cli.
-		Build(source, version, tag, platform).
-		Directory("bin")
-	// The binary might be called dagger or dagger.exe
-	files, err := bin.
-		Glob(ctx, "dagger*")
-	if err != nil {
-		return nil, err
-	}
-	if len(files) == 0 {
-		return nil, fmt.Errorf("No matching binary in %q", files)
-	}
-	return bin.File(files[0]), nil
+) *dagger.File {
+	return dag.Go(source).
+		Binary("./cmd/dagger", dagger.GoBinaryOpts{
+			Platform: platform,
+			Values: []string{
+				"github.com/dagger/dagger/engine.Version=" + version,
+				"github.com/dagger/dagger/engine.Tag=" + tag,
+			},
+			NoSymbols: true,
+			NoDwarf:   true,
+		})
 }
 
 // Publish the CLI using GoReleaser
@@ -172,7 +167,9 @@ func (cli DaggerCli) TestPublish(
 				platform += "/v7" // not always correct but not sure of better way
 			}
 			eg.Go(func() error {
-				_, err := cli.Binary(ctx, source, version, tag, dagger.Platform(platform))
+				_, err := cli.
+					Binary(ctx, source, version, tag, dagger.Platform(platform)).
+					Sync(ctx)
 				return err
 			})
 		}

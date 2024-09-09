@@ -49,7 +49,12 @@ func (m *Codegen) Binary(
 	// +optional
 	platform dagger.Platform,
 ) *dagger.File {
-	return m.Build(source, platform).File("bin/codegen")
+	return dag.Go(source).
+		Binary("./cmd/codegen", dagger.GoBinaryOpts{
+			NoSymbols: true,
+			NoDwarf:   true,
+			Platform:  platform,
+		})
 }
 
 func (m *Codegen) Container(
