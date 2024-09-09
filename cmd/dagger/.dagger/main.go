@@ -19,14 +19,14 @@ type DaggerCli struct{}
 func (cli DaggerCli) Build(
 	// +optional
 	// +defaultPath="/"
-	// +ignore=["!cmd/dagger", "!sdk/go"]
+	// +ignore=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go"]
 	source *dagger.Directory,
-	// +optional
-	platform dagger.Platform,
 	// +optional
 	version string,
 	// +optional
 	tag string,
+	// +optional
+	platform dagger.Platform,
 ) *dagger.Directory {
 	return dag.Go(source).
 		Build(dagger.GoBuildOpts{
@@ -44,50 +44,44 @@ func (cli DaggerCli) Build(
 func (cli DaggerCli) Binary(
 	// +optional
 	// +defaultPath="/"
-	// +ignore=["!cmd/dagger", "!sdk/go"]
+	// +ignore=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go"]
 	source *dagger.Directory,
-	// +optional
-	platform dagger.Platform,
 	// +optional
 	version string,
 	// +optional
 	tag string,
+	// +optional
+	// +default="current"
+	platform dagger.Platform,
 ) *dagger.File {
 	return cli.
-		Build(source, platform, version, tag).
+		Build(source, version, tag, platform).
 		File("bin/dagger")
 }
 
 // Publish the CLI using GoReleaser
 func (cli DaggerCli) Publish(
 	ctx context.Context,
-
-	// +optional
-	tag string,
-
-	// +optional
-	version string,
-
 	// +optional
 	// +defaultPath="/"
-	// +ignore=["!cmd/dagger", "!sdk/go", "!.git", ".git/objects/*", "!.changes"]
+	// +ignore=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
 	source *dagger.Directory,
-
+	// +optional
+	version string,
+	// +optional
+	tag string,
 	githubOrgName string,
 	githubToken *dagger.Secret,
-
 	goreleaserKey *dagger.Secret,
-
 	awsAccessKeyID *dagger.Secret,
 	awsSecretAccessKey *dagger.Secret,
 	awsRegion *dagger.Secret,
 	awsBucket *dagger.Secret,
-
 	artefactsFQDN string,
 ) error {
 	ctr := goreleaser().WithMountedDirectory("", source)
 	// Verify tag
-	_, err = ctr.WithExec([]string{"git", "show-ref", "--verify", "refs/tags/" + tag}).Sync(ctx)
+	_, err := ctr.WithExec([]string{"git", "show-ref", "--verify", "refs/tags/" + tag}).Sync(ctx)
 	if err != nil {
 		err, ok := err.(*ExecError)
 		if !ok || !strings.Contains(err.Stderr, "not a valid ref") {
@@ -108,7 +102,7 @@ func (cli DaggerCli) Publish(
 			"--config", ".goreleaser.nightly.yml",
 		)
 	}
-	_, err := ctr.
+	_, err = ctr.
 		WithEnvVariable("GH_ORG_NAME", githubOrgName).
 		WithSecretVariable("GITHUB_TOKEN", githubToken).
 		WithSecretVariable("GORELEASER_KEY", goreleaserKey).
@@ -128,7 +122,17 @@ func (cli DaggerCli) Publish(
 }
 
 // Verify that the CLI builds without actually publishing anything
-func (cli DaggerCli) TestPublish(ctx context.Context) error {
+func (cli DaggerCli) TestPublish(
+	ctx context.Context,
+	// +optional
+	// +defaultPath="/"
+	// +BLAignore=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
+	source *dagger.Directory,
+	// +optional
+	version string,
+	// +optional
+	tag string,
+) error {
 	// TODO: ideally this would also use go releaser, but we want to run this
 	// step in PRs and locally and we use goreleaser pro features that require
 	// a key which is private. For now, this just builds the CLI for the same
@@ -136,7 +140,8 @@ func (cli DaggerCli) TestPublish(ctx context.Context) error {
 	oses := []string{"linux", "windows", "darwin"}
 	arches := []string{"amd64", "arm64", "arm"}
 
-	var eg errgroup.Group
+	eg, _ := errgroup.WithContext(context.Background())
+	// Check that the build is not broken on any target platform
 	for _, os := range oses {
 		for _, arch := range arches {
 			if arch == "arm" && os == "darwin" {
@@ -147,20 +152,14 @@ func (cli DaggerCli) TestPublish(ctx context.Context) error {
 				platform += "/v7" // not always correct but not sure of better way
 			}
 			eg.Go(func() error {
-				_, err := cli.Binary(dagger.DaggerCliBinaryOpts{
-					Platform: platform,
-				}).
-					Sync(ctx)
+				_, err := cli.Binary(source, version, tag, dagger.Platform(platform)).Sync(ctx)
 				return err
 			})
 		}
 	}
+	// Test that the goreleaser environment is not broken
 	eg.Go(func() error {
-		env, err := publishEnv(ctx)
-		if err != nil {
-			return err
-		}
-		_, err = env.Sync(ctx)
+		_, err := goreleaser().Sync(ctx)
 		return err
 	})
 	return eg.Wait()
