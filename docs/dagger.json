@@ -1,0 +1,28 @@
+{
+  "name": "docs",
+  "sdk": "go",
+  "dependencies": [
+    {
+      "name": "graphql",
+      "source": "../modules/graphql"
+    },
+    {
+      "name": "dagger-cli",
+      "source": "../cmd/dagger"
+    },
+    {
+      "name": "dirdiff",
+      "source": "../modules/dirdiff"
+    },
+    {
+      "name": "docusaurus",
+      "source": "github.com/levlaz/daggerverse/docusaurus@e494cec1aa8f9faab1e0f12b2e5eea4a2321f2de"
+    },
+    {
+      "name": "go",
+      "source": "../modules/go"
+    }
+  ],
+  "source": ".dagger",
+  "engineVersion": "v0.12.7"
+}
