@@ -9,8 +9,6 @@ import (
 
 // A dev environment for the official Dagger SDKs
 type SDK struct {
-	// Develop the Dagger Go SDK
-	Go *GoSDK
 	// Develop the Dagger Python SDK
 	Python *PythonSDK
 	// Develop the Dagger Typescript SDK
@@ -41,7 +39,6 @@ type sdkBase interface {
 
 func (sdk *SDK) allSDKs() []sdkBase {
 	return []sdkBase{
-		sdk.Go,
 		sdk.Python,
 		sdk.Typescript,
 		sdk.Elixir,

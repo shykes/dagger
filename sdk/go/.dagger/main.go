@@ -76,6 +76,7 @@ func (t GoSdk) Test(ctx context.Context) (rerr error) {
 	return err
 }
 
+// Build an environment for developing the Go SDK
 func (t GoSdk) Env() *dagger.Container {
 	return dag.
 		Go(t.Source).
