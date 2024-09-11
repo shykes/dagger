@@ -1,8 +1,13 @@
+// VersionInfo is a helper for passing version information around.
+//
+// In general, it attempts to follow go's psedudoversioning:
+// https://go.dev/doc/modules/version-numbers
 package main
 
 import (
 	"context"
 	"crypto/sha1" //nolint:gosec
+	"dagger/version-info/internal/dagger"
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
@@ -12,27 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dagger/dagger/.dagger/internal/dagger"
 	"golang.org/x/mod/semver"
 )
 
-// VersionInfo is a helper for passing version information around.
-//
-// In general, it attempts to follow go's psedudoversioning:
-// https://go.dev/doc/modules/version-numbers
-
-type VersionInfo struct {
-	Tag string
-
-	NextVersion string
-	Timestamp   string
-	Commit      string
-	Dev         string
-}
-
-var commitRegexp = regexp.MustCompile("^[0-9a-f]{40}$")
-
-func newVersion(ctx context.Context, dir *dagger.Directory, version string) (*VersionInfo, error) {
+func New(ctx context.Context, dir *dagger.Directory, version string) (*VersionInfo, error) {
 	switch {
 	case version == "":
 		dgst, err := dirhash(ctx, dir)
@@ -64,6 +52,17 @@ func newVersion(ctx context.Context, dir *dagger.Directory, version string) (*Ve
 		return nil, fmt.Errorf("could not parse version info %q", version)
 	}
 }
+
+type VersionInfo struct {
+	Tag string
+
+	NextVersion string
+	Timestamp   string
+	Commit      string
+	Dev         string
+}
+
+var commitRegexp = regexp.MustCompile("^[0-9a-f]{40}$")
 
 func (info *VersionInfo) String() string {
 	if info.Tag != "" {
