@@ -5,18 +5,29 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dagger/dagger/.dagger/internal/dagger"
-	"github.com/dagger/dagger/.dagger/util"
+	"dagger/helm/internal/dagger"
+
 	"github.com/moby/buildkit/identity"
 	"helm.sh/helm/v3/pkg/chart"
 	"sigs.k8s.io/yaml"
 )
 
-type Helm struct {
-	Dagger *DaggerDev        // +private
-	Source *dagger.Directory // +private
+func New(
+	// The dagger helm chart directory
+	// +optional
+	// +defaultPath="/helm/dagger"
+	chart *dagger.Directory,
+) *Helm {
+	return &Helm{
+		Chart: chart,
+	}
 }
 
+type Helm struct {
+	Chart *dagger.Directory // +private
+}
+
+// Lint the helm chart
 func (h *Helm) Lint(ctx context.Context) error {
 	_, err := h.chart().
 		WithExec([]string{"helm", "lint"}).
@@ -27,22 +38,16 @@ func (h *Helm) Lint(ctx context.Context) error {
 	return err
 }
 
+// Test the helm chart on an ephemeral K3S service
 func (h *Helm) Test(ctx context.Context) error {
-	cli, err := h.Dagger.CLI().Binary(ctx, "")
-	if err != nil {
-		return err
-	}
-
 	k3s := dag.K3S("helm-test")
-
 	// NOTE: force starting here - without this, the config won't be generated
 	k3ssvc, err := k3s.Server().Start(ctx)
 	if err != nil {
 		return err
 	}
-
 	test, err := h.chart().
-		WithMountedFile("/usr/bin/dagger", cli).
+		WithMountedFile("/usr/bin/dagger", dag.DaggerCli().Binary()).
 		WithServiceBinding("helm-test", k3ssvc).
 		WithFile("/.kube/config", k3s.Config()).
 		WithEnvVariable("KUBECONFIG", "/.kube/config").
@@ -53,12 +58,17 @@ func (h *Helm) Test(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	podName, err := test.WithExec([]string{"kubectl", "get", "pod", "--selector=name=dagger-dagger-helm-engine", "--namespace=dagger", "--output=jsonpath={.items[0].metadata.name}"}).Stdout(ctx)
+	podName, err := test.
+		WithExec([]string{
+			"kubectl", "get", "pod",
+			"--selector=name=dagger-dagger-helm-engine",
+			"--namespace=dagger",
+			"--output=jsonpath={.items[0].metadata.name}",
+		}).
+		Stdout(ctx)
 	if err != nil {
 		return err
 	}
-
 	stdout, err := test.
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", fmt.Sprintf("kube-pod://%s?namespace=dagger", podName)).
 		WithExec([]string{"dagger", "query"}, dagger.ContainerWithExecOpts{
@@ -74,7 +84,6 @@ func (h *Helm) Test(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
 	if !strings.Contains(stdout, "Linux") {
 		return fmt.Errorf("container didn't seem to be running linux")
 	}
@@ -89,7 +98,7 @@ func (h *Helm) chart() *dagger.Container {
 				"kubectl",
 			},
 		}).
-		WithDirectory("/dagger-helm", h.Source).
+		WithDirectory("/dagger-helm", h.Chart).
 		WithWorkdir("/dagger-helm")
 }
 
@@ -136,10 +145,8 @@ func (h *Helm) SetVersion(
 func (h *Helm) Publish(
 	ctx context.Context,
 	tag string,
-
 	// +optional
 	githubToken *dagger.Secret,
-
 	// +optional
 	dryRun bool,
 ) error {
@@ -149,21 +156,19 @@ func (h *Helm) Publish(
 	if githubToken != nil {
 		helm = helm.WithSecretVariable("GITHUB_TOKEN", githubToken)
 	}
-
-	pkgCmd := "helm package ."
-
+	var script string
 	if dryRun {
-		helm = helm.With(util.ShellCmd(pkgCmd))
+		script = "helm package ."
 	} else {
-		helm = helm.
-			With(util.ShellCmds(
-				"helm registry login ghcr.io/dagger --username dagger --password $GITHUB_TOKEN",
-				pkgCmd,
-				"helm push dagger-helm-"+version+".tgz oci://ghcr.io/dagger",
-				"helm registry logout ghcr.io/dagger",
-			))
+		script = strings.Join([]string{
+			"helm registry login ghcr.io/dagger --username dagger --password $GITHUB_TOKEN",
+			"helm package .",
+			"helm push dagger-helm-" + version + ".tgz oci://ghcr.io/dagger",
+			"helm registry logout ghcr.io/dagger",
+		}, " && \\")
 	}
-
-	_, err := helm.Sync(ctx)
+	_, err := helm.
+		WithExec([]string{"sh", "-c", script}).
+		Sync(ctx)
 	return err
 }
