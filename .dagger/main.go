@@ -15,9 +15,9 @@ import (
 
 // A dev environment for the DaggerDev Engine
 type DaggerDev struct {
-	Src     *dagger.Directory // +private
-	Version *VersionInfo
+	Source  *dagger.Directory // +private
 	Tag     string
+	Version string
 
 	// When set, module codegen is automatically applied when retrieving the Dagger source code
 	ModCodegen        bool
@@ -56,82 +56,52 @@ func New(
 	// Git ref (used for test-publish checks)
 	// +optional
 	ref string,
+
+	// Re-generate all dagger modules
+	// +optional
+	modCodegen bool,
 ) (*DaggerDev, error) {
-	versionInfo, err := newVersion(ctx, source, version)
+	v, err := dag.VersionInfo(source, version).String(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	dev := &DaggerDev{
-		Src:       source,
-		Version:   versionInfo,
+	if modCodegen {
+		source = dag.Supermod(source).
+			DevelopAll(dagger.SupermodDevelopAllOpts{Exclude: []string{
+				"docs/.*",
+				"core/integration/.*",
+			}}).Source()
+	}
+	if ref == "" {
+		// FIXME: this doesn't always work in github actions
+		ref, err := dag.
+			Wolfi().
+			Container(dagger.WolfiContainerOpts{Packages: []string{"git"}}).
+			WithMountedDirectory("/src", gitDir).
+			WithWorkdir("/src").
+			WithMountedFile("/bin/get-ref.sh", dag.CurrentModule().Source().File("get-ref.sh")).
+			WithExec([]string{"sh", "get-ref.sh"}).
+			Stdout(ctx)
+		if err != nil {
+			return nil, err
+		}
+		ref = strings.TrimRight(ref, "\n")
+	}
+	return &DaggerDev{
+		Source:    source,
+		Version:   v,
 		Tag:       tag,
 		DockerCfg: dockerCfg,
 		GitRef:    ref,
 		GitDir:    gitDir,
-	}
-
-	// FIXME shykes
-	modules := dag.Supermod(source).Submodules(ctx, dagger.SupermodSubmodulesOpts{
-		Exclude: []string{
-			"docs/.*",
-			"core/integration/.*",
-		}})
-	modules, err := dag.Dirdiff().Find(ctx, dev.Src, "dagger.json")
-	if err != nil {
-		return nil, err
-	}
-	for _, module := range modules {
-		if strings.HasPrefix(module, "docs/") {
-			continue
-		}
-		if strings.HasPrefix(module, "core/integration/") {
-			continue
-		}
-		dev.ModCodegenTargets = append(dev.ModCodegenTargets, module)
-	}
-
-	return dev, nil
+	}, nil
 }
-
-// Enable module auto-codegen when retrieving the dagger source code
-func (dev *DaggerDev) WithModCodegen() *DaggerDev {
-	clone := *dev
-	clone.ModCodegen = true
-	return &clone
-}
-
-type Check func(context.Context) error
 
 // Wrap 3 SDK-specific checks into a single check
 type SDKChecks interface {
 	Lint(ctx context.Context) error
 	Test(ctx context.Context) error
 	TestPublish(ctx context.Context, tag string) error
-}
-
-func (dev *DaggerDev) Ref(ctx context.Context) (string, error) {
-	// Said .git introspection logic:
-	ref, err := dag.
-		Wolfi().
-		Container(dagger.WolfiContainerOpts{Packages: []string{"git"}}).
-		WithMountedDirectory("/src", dev.GitDir).
-		WithWorkdir("/src").
-		WithMountedFile("/bin/get-ref.sh", dag.CurrentModule().Source().File("get-ref.sh")).
-		WithExec([]string{"sh", "/bin/get-ref.sh"}).
-		Stdout(ctx)
-	if err != nil {
-		return "", err
-	}
-	ref = strings.TrimRight(ref, "\n")
-	fmt.Printf("git ref: from $GITHUB_REF='%s', from .git='%s'\n", dev.GitRef, ref)
-	// FIXME: this shouldn't be needed.
-	//  but at the moment it is, because introspection from .git
-	//  doesn't work with TestPublish() for some reason.
-	if (dev.GitRef != "") && (ref != dev.GitRef) {
-		return dev.GitRef, nil
-	}
-	return ref, nil
 }
 
 func (dev *DaggerDev) sdkCheck(sdk string) Check {
@@ -246,66 +216,6 @@ func (dev *DaggerDev) Check(ctx context.Context,
 		eg.Go(func() error { return check(ctx) })
 	}
 	return eg.Wait()
-}
-
-// Develop the Dagger CLI
-func (dev *DaggerDev) CLI() *CLI {
-	return &CLI{Dagger: dev}
-}
-
-// Return the Dagger source code
-func (dev *DaggerDev) Source() *dagger.Directory {
-	if !dev.ModCodegen {
-		return dev.Src
-	}
-
-	src := dev.Src
-	for _, module := range dev.ModCodegenTargets {
-		layer := dev.Src.
-			AsModule(dagger.DirectoryAsModuleOpts{
-				SourceRootPath: module,
-			}).
-			GeneratedContextDirectory().
-			Directory(module)
-		src = src.WithDirectory(module, layer)
-	}
-	return src
-}
-
-// Dagger's Go toolchain
-func (dev *DaggerDev) Go() *GoToolchain {
-	return &GoToolchain{Go: dag.Go(dev.Source())}
-}
-
-type GoToolchain struct {
-	// +private
-	*dagger.Go
-}
-
-func (gtc *GoToolchain) Env() *dagger.Container {
-	return gtc.Go.Env()
-}
-
-func (gtc *GoToolchain) Lint(
-	ctx context.Context,
-	packages []string,
-) error {
-	return gtc.Go.Lint(ctx, dagger.GoLintOpts{Packages: packages})
-}
-
-// Develop the Dagger documentation
-func (dev *DaggerDev) Docs() *Docs {
-	return &Docs{Dagger: dev}
-}
-
-// Run Dagger scripts
-func (dev *DaggerDev) Scripts() *Scripts {
-	return &Scripts{Dagger: dev}
-}
-
-// Run all tests
-func (dev *DaggerDev) Test() *Test {
-	return &Test{Dagger: dev}
 }
 
 // Develop Dagger SDKs

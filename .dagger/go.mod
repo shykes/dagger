@@ -26,17 +26,13 @@ require (
 	go.opentelemetry.io/otel/trace v1.27.0
 	go.opentelemetry.io/proto/otlp v1.3.1
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
-	golang.org/x/mod v0.18.0
 	golang.org/x/sync v0.7.0
 	google.golang.org/grpc v1.64.0
-	helm.sh/helm/v3 v3.15.2
-	sigs.k8s.io/yaml v1.4.0
 )
 
 require github.com/opencontainers/image-spec v1.1.0 // indirect
 
 require (
-	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect

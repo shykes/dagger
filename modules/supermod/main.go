@@ -69,12 +69,7 @@ func (m Supermod) Submodule(path string) Supermod {
 	}
 }
 
-func (m Supermod) Source(
-	// +optional
-	develop bool,
-	// +optional
-	developAll bool,
-) *dagger.Directory {
+func (m Supermod) Source() *dagger.Directory {
 	return m.ContextDir.Directory(m.Path)
 }
 

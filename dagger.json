@@ -3,20 +3,12 @@
   "sdk": "go",
   "dependencies": [
     {
-      "name": "supermod",
-      "source": "modules/supermod"
+      "name": "version-info",
+      "source": "modules/version-info"
     },
     {
       "name": "codegen",
       "source": "cmd/codegen"
-    },
-    {
-      "name": "dirdiff",
-      "source": "modules/dirdiff"
-    },
-    {
-      "name": "docusaurus",
-      "source": "github.com/levlaz/daggerverse/docusaurus@e494cec1aa8f9faab1e0f12b2e5eea4a2321f2de"
     },
     {
       "name": "engine",
@@ -35,14 +27,6 @@
       "source": "sdk/go"
     },
     {
-      "name": "graphql",
-      "source": "modules/graphql"
-    },
-    {
-      "name": "k3s",
-      "source": "github.com/marcosnils/daggerverse/k3s@f4851a9c308410d58c5199dfd1b65e4f3ccae813"
-    },
-    {
       "name": "php-sdk-dev",
       "source": "sdk/php/dev"
     },
@@ -57,6 +41,10 @@
     {
       "name": "shellcheck",
       "source": "modules/shellcheck"
+    },
+    {
+      "name": "supermod",
+      "source": "modules/supermod"
     },
     {
       "name": "types",

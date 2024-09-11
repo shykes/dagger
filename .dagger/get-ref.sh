@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Print the current git ref, or silently exit
+
 git symbolic-ref HEAD
 exit 0
 
@@ -19,7 +21,4 @@ if git rev-parse --verify HEAD >/dev/null 2>&1; then
             echo -n "$(git rev-parse HEAD)"
         fi
     fi
-else
-    echo "Error: Unable to resolve Git ref."
-    exit 1
 fi
