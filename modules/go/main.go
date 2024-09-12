@@ -31,6 +31,15 @@ func New(
 	// Use a custom build cache
 	// +optional
 	buildCache *dagger.CacheVolume,
+
+	// Attach an optional sidecar to the go environment
+	// +optional
+	sidecar Sidecar,
+
+	// Use a custom base container.
+	// The container must have Go installed.
+	// +optional
+	base *dagger.Container,
 ) Go {
 	if source == nil {
 		source = dag.Directory()
@@ -41,12 +50,8 @@ func New(
 	if buildCache == nil {
 		buildCache = dag.CacheVolume("github.com/dagger/dagger/modules/go:build")
 	}
-	return Go{
-		Version:     version,
-		Source:      source,
-		ModuleCache: moduleCache,
-		BuildCache:  buildCache,
-		Base: dag.
+	if base == nil {
+		base = dag.
 			Wolfi().
 			Container(dagger.WolfiContainerOpts{Packages: []string{
 				"go~" + version,
@@ -62,7 +67,15 @@ func New(
 			// Configure caches
 			WithMountedCache("/go/pkg/mod", moduleCache).
 			WithMountedCache("/root/.cache/go-build", buildCache).
-			WithWorkdir("/app"),
+			WithWorkdir("/app")
+	}
+	return Go{
+		Version:     version,
+		Source:      source,
+		ModuleCache: moduleCache,
+		BuildCache:  buildCache,
+		Base:        base,
+		Sidecar:     sidecar,
 	}
 }
 
@@ -82,6 +95,13 @@ type Go struct {
 
 	// Base container from which to run all operations
 	Base *dagger.Container
+
+	Sidecar Sidecar // +private
+}
+
+type Sidecar interface {
+	dagger.DaggerObject
+	Bind(c *dagger.Container) *dagger.Container
 }
 
 // Download dependencies into the module cache
@@ -107,6 +127,13 @@ func (p Go) Env(
 	cgo bool,
 ) *dagger.Container {
 	return p.Base.
+		// Attach sidecar
+		With(func(c *dagger.Container) *dagger.Container {
+			if p.Sidecar != nil {
+				return p.Sidecar.Bind(c)
+			}
+			return c
+		}).
 		// Configure CGO
 		WithEnvVariable("CGO_ENABLED", func() string {
 			if cgo {
@@ -253,6 +280,78 @@ func (p Go) Binary(
 		return nil, fmt.Errorf("No matching binary in %q", files)
 	}
 	return dir.File(files[0]), nil
+}
+
+func (p Go) Test(
+	ctx context.Context,
+	// Only run these tests
+	// +optional
+	run string,
+	// Skip these tests
+	// +optional
+	skip string,
+	// Abort test run on first failure
+	// +optional
+	failfast bool,
+	// How many tests to run in parallel - defaults to the number of CPUs
+	// +optional
+	// +default=0
+	parallel int,
+	// How long before timing out the test run
+	// +optional
+	// +default="30m"
+	timeout string,
+	// +optional
+	// +default=1
+	count int,
+	// Which packages to test
+	// +optional
+	// +default=["./..."]
+	pkgs []string,
+	// Pass arguments to 'go build -ldflags''
+	// +optional
+	ldflags []string,
+	// Add string value definition of the form importpath.name=value
+	// Example: "github.com/my/module.Foo=bar"
+	// +optional
+	values []string,
+	// Enable race detector. Implies cgo=true
+	// +optional
+	race bool,
+	// Enable CGO
+	// +optional
+	cgo bool,
+) error {
+	cmd := []string{"go", "test", "-v"}
+	if race {
+		cgo = true
+	}
+	for _, val := range values {
+		ldflags = append(ldflags, "-X '"+val+"'")
+	}
+	if len(ldflags) > 0 {
+		cmd = append(cmd, "-ldflags", strings.Join(ldflags, " "))
+	}
+	if parallel != 0 {
+		cmd = append(cmd, fmt.Sprintf("-parallel=%d", parallel))
+	}
+	cmd = append(cmd, fmt.Sprintf("-timeout=%s", timeout))
+	if race {
+		cmd = append(cmd, "-race")
+	}
+	if run != "" {
+		cmd = append(cmd, "-run", run)
+	}
+	if skip != "" {
+		cmd = append(cmd, "-skip", skip)
+	}
+	cmd = append(cmd, pkgs...)
+	_, err := p.
+		Download().
+		Env(defaultPlatform, cgo).
+		WithExec(cmd).
+		Sync(ctx)
+	return err
 }
 
 // List packages matching the specified critera

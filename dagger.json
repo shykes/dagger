@@ -23,20 +23,8 @@
       "source": "modules/go"
     },
     {
-      "name": "go-sdk",
-      "source": "sdk/go"
-    },
-    {
-      "name": "php-sdk-dev",
-      "source": "sdk/php/dev"
-    },
-    {
       "name": "ps-analyzer",
       "source": "modules/ps-analyzer"
-    },
-    {
-      "name": "python-sdk-dev",
-      "source": "sdk/python/dev"
     },
     {
       "name": "shellcheck",
