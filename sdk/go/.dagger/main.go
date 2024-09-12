@@ -10,29 +10,19 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type Sidecar interface {
-	dagger.DaggerObject
-	Bind(ctr *dagger.Container) *dagger.Container
-}
-
 func New(
 	// +optional
 	// +defaultPath="/"
-	// +ignore=["!sdk/go"]
+	// +ignore=["*", "!sdk/go"]
 	source *dagger.Directory,
-	//engine dagger.TypesSidecar,
-	engine Sidecar,
 ) *GoSdk {
 	return &GoSdk{
 		Source: source,
-		Engine: engine,
 	}
 }
 
 type GoSdk struct {
 	Source *dagger.Directory // +private
-	//Engine dagger.TypesSidecar // +private
-	Engine Sidecar // +private
 }
 
 // Lint the Go SDK
@@ -82,7 +72,7 @@ func (t GoSdk) Env() *dagger.Container {
 		Go(t.Source).
 		Env().
 		WithWorkdir("sdk/go").
-		With(t.Engine.Bind)
+		With(dag.Engine().Bind)
 }
 
 // Regenerate the Go SDK API

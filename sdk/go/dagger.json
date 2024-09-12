@@ -3,6 +3,10 @@
   "sdk": "go",
   "dependencies": [
     {
+      "name": "engine",
+      "source": "../../engine"
+    },
+    {
       "name": "dirdiff",
       "source": "../../modules/dirdiff"
     },
