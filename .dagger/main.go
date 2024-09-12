@@ -15,13 +15,10 @@ import (
 
 // A dev environment for the DaggerDev Engine
 type DaggerDev struct {
-	Source  *dagger.Directory // +private
 	Tag     string
 	Version string
 
-	// When set, module codegen is automatically applied when retrieving the Dagger source code
-	ModCodegen        bool
-	ModCodegenTargets []string
+	Scripts *dagger.Directory
 
 	// Can be used by nested clients to forward docker credentials to avoid
 	// rate limits
@@ -29,21 +26,34 @@ type DaggerDev struct {
 
 	// +private
 	GitRef string
-	GitDir *dagger.Directory
 }
 
 func New(
 	ctx context.Context,
+
 	// +optional
 	// +defaultPath="/"
-	// +ignore=["bin", ".git", "**/node_modules", "**/.venv", "**/__pycache__"]
-	source *dagger.Directory,
+	// +ignore=["*", "!install.sh", "!install.ps1"]
+	scripts *dagger.Directory,
 
 	// Git directory, for metadata introspection
 	// +optional
 	// +defaultPath="/"
-	// +ignore=["!.git"]
+	// +ignore=["*", "!.git/HEAD", "!.git/refs", "!.git/config"]
 	gitDir *dagger.Directory,
+
+	// .changes file used to extract version information
+	// +optional
+	// +defaultPath="/"
+	// +ignore=["*", "!.changes"]
+	changes *dagger.Directory,
+
+	// Contents of the source directory to be hashed for computing a version
+	// FIXME: find a more efficient way to do this
+	// +optional
+	// +defaultPath="/"
+	// +ignore=["bin", ".git", "**/node_modules", "**/.venv", "**/__pycache__"]
+	sourceForVersionHash *dagger.Directory,
 
 	// +optional
 	version string,
@@ -61,16 +71,11 @@ func New(
 	// +optional
 	modCodegen bool,
 ) (*DaggerDev, error) {
-	v, err := dag.VersionInfo(source, version).String(ctx)
+	v, err := dag.VersionInfo(changes.WithDirectory("", sourceForVersionHash), version).String(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if modCodegen {
-		source = dag.Supermod(source).
-			DevelopAll(dagger.SupermodDevelopAllOpts{Exclude: []string{
-				"docs/.*",
-				"core/integration/.*",
-			}}).Source()
 	}
 	if ref == "" {
 		// FIXME: this doesn't always work in github actions
@@ -88,14 +93,66 @@ func New(
 		ref = strings.TrimRight(ref, "\n")
 	}
 	return &DaggerDev{
-		Source:    source,
 		Version:   v,
+		Scripts:   scripts,
 		Tag:       tag,
 		DockerCfg: dockerCfg,
 		GitRef:    ref,
-		GitDir:    gitDir,
 	}, nil
 }
+
+func (dev *DaggerDev) Generate(
+	// +optional
+	// +defaultPath="/"
+	// +ignore=["*", "!**/dagger.json", "!**/.dagger", "!modules/**"]
+	daggerModules *dagger.Directory,
+) *dagger.Directory {
+	return dirMerge([]*dagger.Directory{
+		// Re-generate all dagger modules
+		dag.Supermod(daggerModules).
+			DevelopAll(dagger.SupermodDevelopAllOpts{Exclude: []string{
+				"docs/.*",
+				"core/integration/.*",
+			}}).Source(),
+		// Re-generate docs
+		dag.Docs().Generate(),
+		// Re-generate Go SDK client library
+		dag.GoSDK(engine *dagger.GoSDKSidecar, opts ...dagger.GoSDKOpts)
+
+}
+
+func dirMerge(dirs []*dagger.Directory) *dagger.Directory {
+	out *dagger.Directory
+	for _, dir := range dirs {
+		if out == nil {
+			out = dir
+		} else {
+			out = out.WithDirectory("", dir)
+		}
+	}
+	return out
+}
+
+// Re-generate all dagger modules
+func (dev *DaggerDev) GenerateDaggerModules(
+	// +optional
+	// +defaultPath="/"
+	// +ignore=["*", "!**/dagger.json", "!**/.dagger", "!modules/**"]
+	source *dagger.Directory,
+) *dagger.Directory {
+	return dag.Supermod(source).
+		DevelopAll(dagger.SupermodDevelopAllOpts{Exclude: []string{
+			"docs/.*",
+			"core/integration/.*",
+		}}).Source()
+}
+
+// Lint the Dagger source code
+func (dev *DaggerDev) Lint(
+	ctx context.Context,
+)
+
+type Check func(context.Context) error
 
 // Wrap 3 SDK-specific checks into a single check
 type SDKChecks interface {

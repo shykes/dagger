@@ -3,12 +3,12 @@
   "sdk": "go",
   "dependencies": [
     {
-      "name": "version-info",
-      "source": "modules/version-info"
-    },
-    {
       "name": "codegen",
       "source": "cmd/codegen"
+    },
+    {
+      "name": "docs",
+      "source": "docs"
     },
     {
       "name": "engine",
@@ -21,6 +21,10 @@
     {
       "name": "go",
       "source": "modules/go"
+    },
+    {
+      "name": "go-sdk",
+      "source": "sdk/go"
     },
     {
       "name": "ps-analyzer",
@@ -39,10 +43,14 @@
       "source": "modules/types"
     },
     {
+      "name": "version-info",
+      "source": "modules/version-info"
+    },
+    {
       "name": "wolfi",
       "source": "modules/wolfi"
     }
   ],
   "source": ".dagger",
-  "engineVersion": "v0.12.7"
+  "engineVersion": "v0.13.0"
 }
