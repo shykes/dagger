@@ -11,7 +11,7 @@ import (
 func New(
 	// +optional
 	// +defaultPath="/"
-	// +ignore=["!docs"]
+	// +ignore=["*", "!docs"]
 	source *dagger.Directory,
 ) Docs {
 	return Docs{
@@ -22,11 +22,6 @@ func New(
 type Docs struct {
 	Source *dagger.Directory // +private
 }
-
-const (
-	generatedSchemaPath       = "docs/docs-graphql/schema.graphqls"
-	generatedAPIReferencePath = "docs/static/api/reference/index.html"
-)
 
 // Build the docs website
 func (docs Docs) Site() *dagger.Directory {
@@ -40,7 +35,7 @@ func (docs Docs) Site() *dagger.Directory {
 
 // Build the docs server
 func (docs Docs) Server() *dagger.Container {
-	nginxConfig := dag.CurrentModule().Source().File("docs-nginx.conf")
+	nginxConfig := dag.CurrentModule().Source().File("nginx.conf")
 	return dag.
 		Container().
 		From("nginx").
