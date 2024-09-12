@@ -163,6 +163,41 @@ func (p Go) Env(
 		WithMountedDirectory("", p.Source)
 }
 
+func goCommand(
+	cmd []string,
+	pkgs []string,
+	ldflags []string,
+	values []string,
+	race bool,
+) []string {
+	for _, val := range values {
+		ldflags = append(ldflags, "-X '"+val+"'")
+	}
+	if len(ldflags) > 0 {
+		cmd = append(cmd, "-ldflags", strings.Join(ldflags, " "))
+	}
+	if race {
+		cmd = append(cmd, "-race")
+	}
+	cmd = append(cmd, pkgs...)
+	return cmd
+}
+
+// List tests
+func (p Go) Tests(
+	ctx context.Context,
+	// Packages to list tests from (default all packages)
+	// +optional
+	// +default=["./..."]
+	pkgs []string,
+) (string, error) {
+	script := "go test -list=. " + strings.Join(pkgs, " ") + " | grep ^Test | sort"
+	return p.
+		Env(defaultPlatform, false).
+		WithExec([]string{"sh", "-c", script}).
+		Stdout(ctx)
+}
+
 func (p Go) Build(
 	ctx context.Context,
 	// Which targets to build (default all main packages)
@@ -203,27 +238,18 @@ func (p Go) Build(
 	if err != nil {
 		return nil, err
 	}
-	for _, val := range values {
-		ldflags = append(ldflags, "-X '"+val+"'")
-	}
 	if noSymbols {
 		ldflags = append(ldflags, "-s")
 	}
 	if noDwarf {
 		ldflags = append(ldflags, "-w")
 	}
-	cmd := []string{"go", "build", "-o", output}
-	if len(ldflags) > 0 {
-		cmd = append(cmd, "-ldflags", strings.Join(ldflags, " "))
-	}
-	if race {
-		cmd = append(cmd, "-race")
-	}
 	env := p.
 		Download().
 		Env(platform, cgo)
+	cmd := []string{"go", "build", "-o", output}
 	for _, pkg := range mainPkgs {
-		env = env.WithExec(append(cmd, pkg))
+		env = env.WithExec(goCommand(cmd, []string{pkg}, ldflags, values, race))
 	}
 	return dag.Directory().WithDirectory(output, env.Directory(output)), nil
 }
@@ -322,34 +348,24 @@ func (p Go) Test(
 	// +optional
 	cgo bool,
 ) error {
-	cmd := []string{"go", "test", "-v"}
 	if race {
 		cgo = true
 	}
-	for _, val := range values {
-		ldflags = append(ldflags, "-X '"+val+"'")
-	}
-	if len(ldflags) > 0 {
-		cmd = append(cmd, "-ldflags", strings.Join(ldflags, " "))
-	}
+	cmd := []string{"go", "test", "-v"}
 	if parallel != 0 {
 		cmd = append(cmd, fmt.Sprintf("-parallel=%d", parallel))
 	}
 	cmd = append(cmd, fmt.Sprintf("-timeout=%s", timeout))
-	if race {
-		cmd = append(cmd, "-race")
-	}
 	if run != "" {
 		cmd = append(cmd, "-run", run)
 	}
 	if skip != "" {
 		cmd = append(cmd, "-skip", skip)
 	}
-	cmd = append(cmd, pkgs...)
 	_, err := p.
 		Download().
 		Env(defaultPlatform, cgo).
-		WithExec(cmd).
+		WithExec(goCommand(cmd, pkgs, ldflags, values, race)).
 		Sync(ctx)
 	return err
 }
