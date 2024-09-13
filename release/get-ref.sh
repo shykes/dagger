@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Print the current git ref, or silently exit
-
+set -e
 git symbolic-ref HEAD
 exit 0
 

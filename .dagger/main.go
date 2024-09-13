@@ -17,9 +17,6 @@ import (
 type DaggerDev struct {
 	Tag     string
 	Version string
-
-	Scripts *dagger.Directory
-
 	// Can be used by nested clients to forward docker credentials to avoid
 	// rate limits
 	DockerCfg *dagger.Secret // +private
@@ -30,11 +27,6 @@ type DaggerDev struct {
 
 func New(
 	ctx context.Context,
-
-	// +optional
-	// +defaultPath="/"
-	// +ignore=["*", "!install.sh", "!install.ps1"]
-	scripts *dagger.Directory,
 
 	// Git directory, for metadata introspection
 	// +optional
@@ -94,7 +86,6 @@ func New(
 	}
 	return &DaggerDev{
 		Version:   v,
-		Scripts:   scripts,
 		Tag:       tag,
 		DockerCfg: dockerCfg,
 		GitRef:    ref,
@@ -108,29 +99,12 @@ func (dev *DaggerDev) Generate(
 	daggerModules *dagger.Directory,
 ) *dagger.Directory {
 	return dirMerge([]*dagger.Directory{
-		// Re-generate all dagger modules
-		dag.Supermod(daggerModules).
-			DevelopAll(dagger.SupermodDevelopAllOpts{Exclude: []string{
-				"docs/.*",
-				"core/integration/.*",
-			}}).Source(),
+		dev.GenerateDaggerModules(daggerModules),
 		// Re-generate docs
 		dag.Docs().Generate(),
 		// Re-generate Go SDK client library
-		dag.GoSDK(engine *dagger.GoSDKSidecar, opts ...dagger.GoSDKOpts)
-
-}
-
-func dirMerge(dirs []*dagger.Directory) *dagger.Directory {
-	out *dagger.Directory
-	for _, dir := range dirs {
-		if out == nil {
-			out = dir
-		} else {
-			out = out.WithDirectory("", dir)
-		}
-	}
-	return out
+		dag.GoSDK().Generate(),
+	})
 }
 
 // Re-generate all dagger modules
@@ -147,10 +121,30 @@ func (dev *DaggerDev) GenerateDaggerModules(
 		}}).Source()
 }
 
+func dirMerge(dirs []*dagger.Directory) *dagger.Directory {
+	var out *dagger.Directory
+	for _, dir := range dirs {
+		if out == nil {
+			out = dir
+		} else {
+			out = out.WithDirectory("", dir)
+		}
+	}
+	return out
+}
+
 // Lint the Dagger source code
 func (dev *DaggerDev) Lint(
 	ctx context.Context,
-)
+) error {
+	eg, ctx := errgroup.WithContext(ctx)
+	// Go SDK lint
+	eg.Go(func() error {
+		return dag.GoSDK().Lint(ctx)
+	})
+	// Fixme: lint other SDKs
+	return eg.Wait()
+}
 
 type Check func(context.Context) error
 

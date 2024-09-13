@@ -15,24 +15,12 @@
       "source": "engine"
     },
     {
-      "name": "gh",
-      "source": "github.com/sagikazarmark/daggerverse/gh@5b826062b6bc1bfbd619aa5d0fba117190c85aba"
-    },
-    {
       "name": "go",
       "source": "modules/go"
     },
     {
       "name": "go-sdk",
       "source": "sdk/go"
-    },
-    {
-      "name": "ps-analyzer",
-      "source": "modules/ps-analyzer"
-    },
-    {
-      "name": "shellcheck",
-      "source": "modules/shellcheck"
     },
     {
       "name": "supermod",
