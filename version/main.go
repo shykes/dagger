@@ -1,4 +1,4 @@
-// VersionInfo is a helper for passing version information around.
+// Shared logic for managing Dagger versions
 //
 // In general, it attempts to follow go's psedudoversioning:
 // https://go.dev/doc/modules/version-numbers
@@ -7,7 +7,7 @@ package main
 import (
 	"context"
 	"crypto/sha1" //nolint:gosec
-	"dagger/version-info/internal/dagger"
+	"dagger/version/internal/dagger"
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
@@ -20,56 +20,91 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-func New(ctx context.Context, dir *dagger.Directory, version string) (*VersionInfo, error) {
-	switch {
-	case version == "":
-		dgst, err := dirhash(ctx, dir)
-		if err != nil {
-			return nil, err
-		}
-		next, err := nextVersion(ctx, dir)
-		if err != nil {
-			return nil, err
-		}
-		return &VersionInfo{
-			Dev:         dgst,
-			NextVersion: next,
-			Timestamp:   pseudoversionTimestamp(time.Time{}),
-		}, nil
-	case commitRegexp.MatchString(version):
-		next, err := nextVersion(ctx, dir)
-		if err != nil {
-			return nil, err
-		}
-		return &VersionInfo{
-			Commit:      version,
-			NextVersion: next,
-			Timestamp:   pseudoversionTimestamp(time.Now().UTC()),
-		}, nil
-	case semver.IsValid(version):
-		return &VersionInfo{Tag: version}, nil
-	default:
-		return nil, fmt.Errorf("could not parse version info %q", version)
+func New(ctx context.Context,
+	// A directory containing all the inputs of the artifact to be versioned: the Dagger engine + CLI
+	// An input is any file that changes the artifact if it changes.
+	// This directory is used to compute a digest. If any input changes, the digest changes.
+	// - To avoid false positives, only include actual inputs
+	// - To avoid false negatives, include *all* inputs
+	// +optional
+	// +defaultPath="/"
+	// +ignore=[".git", "bin", "**/node_modules", "**/testdata", "**.changes", "docs", "helm", "release", "version", "modules", "*.md", "LICENSE", "NOTICE", "hack"]
+	inputs *dagger.Directory,
+	// .changes file used to extract version information
+	// +optional
+	// +defaultPath="/"
+	// +ignore=["*", "!.changes/*"]
+	changes *dagger.Directory,
+	// A git tag to use in the version, in short format. Example: "v0.1.0"
+	// Tags not in semver format are silently ignored
+	// +optional
+	tag string,
+	// The git commit sha to use in the version
+	// +optional
+	commit string,
+) (*Version, error) {
+	// If we get a commit, make sure it's valid (regardless of if we use it)
+	if (commit != "") && (!commitRegexp.MatchString(commit)) {
+		return nil, fmt.Errorf("invalid commit sha: %s", commit)
 	}
+	// If we have a semver tag, use just that
+	// Example: "v0.1.0"
+	if !semver.IsValid(tag) {
+		return &Version{Tag: tag}, nil
+	}
+	// If we have a valid commit sha, use that + next version
+	// Example: "v0.2.0-ad997972f96272f3e140e12b12e00ef4d6e9450b"
+	if commit != "" {
+		next, err := nextVersion(ctx, changes)
+		if err != nil {
+			return nil, err
+		}
+		return &Version{
+			Commit:    commit,
+			Next:      next,
+			Timestamp: pseudoversionTimestamp(time.Now().UTC()),
+		}, nil
+	}
+	// Fall back to input hash + next version
+	// Example: "v0.2.0-deadbeefdeadbeefdeadbeef"
+	dgst, err := dirhash(ctx, inputs)
+	if err != nil {
+		return nil, err
+	}
+	next, err := nextVersion(ctx, changes)
+	if err != nil {
+		return nil, err
+	}
+	return &Version{
+		Dev:       dgst,
+		Next:      next,
+		Timestamp: pseudoversionTimestamp(time.Time{}),
+	}, nil
 }
 
-type VersionInfo struct {
+type Version struct {
+	// Git tag component
 	Tag string
 
-	NextVersion string
-	Timestamp   string
-	Commit      string
-	Dev         string
+	// The next version
+	Next string
+	// Timestamp component
+	Timestamp string
+	// Git commit component
+	Commit string
+	// Dev component
+	Dev string
 }
 
 var commitRegexp = regexp.MustCompile("^[0-9a-f]{40}$")
 
-func (info *VersionInfo) String() string {
+// Complete version string
+func (info *Version) Version() string {
 	if info.Tag != "" {
 		return info.Tag
 	}
 
-	nextVersion := info.NextVersion
+	nextVersion := info.Next
 	if nextVersion == "" {
 		nextVersion = "v0.0.0"
 	}

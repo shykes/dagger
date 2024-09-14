@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dagger/dagger/engine/distconsts"
 	"github.com/dagger/dagger/sdk/go/.dagger/internal/dagger"
 	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/sync/errgroup"
@@ -171,4 +172,22 @@ const CLIVersion = %q
 	// provision tests run whenever this file changes.
 	dir := dag.Directory().WithNewFile("sdk/go/internal/engineconn/version.gen.go", versionFile)
 	return dir, nil
+}
+
+// Package the SDK to be embeded in the engine container as a builtin.
+// The builtin container is converted to an OCI archive and copied into
+// the engine container.
+func (t GoSdk) Builtin(
+	ctx context.Context,
+	// +optional
+	platform dagger.Platform,
+) *dagger.Container {
+	return dag.
+		Container(dagger.ContainerOpts{Platform: platform}).
+		From(distconsts.GolangImage).
+		WithExec([]string{"apk", "add", "git"}).
+		WithEnvVariable("GOTOOLCHAIN", "auto").
+		WithFile("/usr/local/bin/codegen", dag.Codegen().Binary(dagger.CodegenBinaryOpts{
+			Platform: platform,
+		}))
 }

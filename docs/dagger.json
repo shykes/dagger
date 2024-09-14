@@ -3,8 +3,8 @@
   "sdk": "go",
   "dependencies": [
     {
-      "name": "graphql",
-      "source": "../modules/graphql"
+      "name": "docusaurus",
+      "source": "github.com/levlaz/daggerverse/docusaurus@f073c72e0a7345bba2173a15269307df297c3c13"
     },
     {
       "name": "dagger-cli",
@@ -15,12 +15,12 @@
       "source": "../modules/dirdiff"
     },
     {
-      "name": "docusaurus",
-      "source": "github.com/levlaz/daggerverse/docusaurus@e494cec1aa8f9faab1e0f12b2e5eea4a2321f2de"
-    },
-    {
       "name": "go",
       "source": "../modules/go"
+    },
+    {
+      "name": "graphql",
+      "source": "../modules/graphql"
     }
   ],
   "source": ".dagger",

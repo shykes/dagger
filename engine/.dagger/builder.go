@@ -19,18 +19,15 @@ import (
 )
 
 type Builder struct {
-	source *dagger.Directory
-
-	version string
-	tag     string
-
+	source       *dagger.Directory
 	platform     dagger.Platform
 	platformSpec ocispecs.Platform
-
-	base       string
-	gpuSupport bool
-
-	race bool
+	base         string
+	gpuSupport   bool
+	race         bool
+	tag          string
+	commit       string
+	version      string
 }
 
 func newBuilder(
@@ -39,17 +36,31 @@ func newBuilder(
 	// +defaultPath="/"
 	// +ignore=[".git", "bin", "**/.DS_Store", "**/node_modules", "**/__pycache__", "**/.venv", "**/.mypy_cache", "**/.pytest_cache", "**/.ruff_cache", "sdk/python/dist", "sdk/python/**/sdk", "go.work", "go.work.sum", "**/*_test.go", "**/target", "**/deps", "**/cover", "**/_build"]
 	source *dagger.Directory,
+	// Git tag to use in binary version + also used as remote engine container tag
+	tag string,
+	// Git commit to use in binary version
+	commit string,
 ) (*Builder, error) {
+	version, err := dag.Version(dagger.VersionOpts{
+		Tag:    tag,
+		Commit: commit,
+	}).Version(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return &Builder{
 		source:       source,
 		platform:     dagger.Platform(platforms.DefaultString()),
 		platformSpec: platforms.DefaultSpec(),
+		tag:          tag,
+		commit:       commit,
+		version:      version,
 	}, nil
 }
 
-func (build *Builder) WithVersion(version string) *Builder {
+func (build *Builder) WithCommit(commit string) *Builder {
 	b := *build
-	b.version = version
+	b.commit = commit
 	return &b
 }
 

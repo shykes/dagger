@@ -51,36 +51,6 @@ func (t *Test) List(ctx context.Context) (string, error) {
 		Stdout(ctx)
 }
 
-// Run specific tests
-func (t *Test) Specific(
-	ctx context.Context,
-	// Only run these tests
-	// +optional
-	run string,
-	// Skip these tests
-	// +optional
-	skip string,
-	// +optional
-	// +default="./..."
-	pkg string,
-	// Abort test run on first failure
-	// +optional
-	failfast bool,
-	// How many tests to run in parallel - defaults to the number of CPUs
-	// +optional
-	parallel int,
-	// How long before timing out the test run
-	// +optional
-	timeout string,
-	// +optional
-	race bool,
-	// +default=1
-	// +optional
-	count int,
-) error {
-	return t.test(ctx, run, skip, pkg, failfast, parallel, timeout, race, count)
-}
-
 func (t *Test) test(
 	ctx context.Context,
 	runTestRegex string,

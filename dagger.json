@@ -3,6 +3,10 @@
   "sdk": "go",
   "dependencies": [
     {
+      "name": "go",
+      "source": "modules/go"
+    },
+    {
       "name": "codegen",
       "source": "cmd/codegen"
     },
@@ -29,10 +33,6 @@
     {
       "name": "types",
       "source": "modules/types"
-    },
-    {
-      "name": "version-info",
-      "source": "modules/version-info"
     },
     {
       "name": "wolfi",

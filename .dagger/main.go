@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/containerd/platforms"
 	"github.com/dagger/dagger/.dagger/internal/dagger"
@@ -15,80 +14,18 @@ import (
 
 // A dev environment for the DaggerDev Engine
 type DaggerDev struct {
-	Tag     string
-	Version string
 	// Can be used by nested clients to forward docker credentials to avoid
 	// rate limits
 	DockerCfg *dagger.Secret // +private
-
-	// +private
-	GitRef string
 }
 
 func New(
 	ctx context.Context,
-
-	// Git directory, for metadata introspection
-	// +optional
-	// +defaultPath="/"
-	// +ignore=["*", "!.git/HEAD", "!.git/refs", "!.git/config"]
-	gitDir *dagger.Directory,
-
-	// .changes file used to extract version information
-	// +optional
-	// +defaultPath="/"
-	// +ignore=["*", "!.changes"]
-	changes *dagger.Directory,
-
-	// Contents of the source directory to be hashed for computing a version
-	// FIXME: find a more efficient way to do this
-	// +optional
-	// +defaultPath="/"
-	// +ignore=["bin", ".git", "**/node_modules", "**/.venv", "**/__pycache__"]
-	sourceForVersionHash *dagger.Directory,
-
-	// +optional
-	version string,
-	// +optional
-	tag string,
-
 	// +optional
 	dockerCfg *dagger.Secret,
-
-	// Git ref (used for test-publish checks)
-	// +optional
-	ref string,
-
-	// Re-generate all dagger modules
-	// +optional
-	modCodegen bool,
 ) (*DaggerDev, error) {
-	v, err := dag.VersionInfo(changes.WithDirectory("", sourceForVersionHash), version).String(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if modCodegen {
-	}
-	if ref == "" {
-		// FIXME: this doesn't always work in github actions
-		ref, err := dag.
-			Wolfi().
-			Container(dagger.WolfiContainerOpts{Packages: []string{"git"}}).
-			WithMountedDirectory("/src", gitDir).
-			WithWorkdir("/src").
-			WithMountedFile("/bin/get-ref.sh", dag.CurrentModule().Source().File("get-ref.sh")).
-			WithExec([]string{"sh", "get-ref.sh"}).
-			Stdout(ctx)
-		if err != nil {
-			return nil, err
-		}
-		ref = strings.TrimRight(ref, "\n")
-	}
 	return &DaggerDev{
-		Version:   v,
-		Tag:       tag,
 		DockerCfg: dockerCfg,
-		GitRef:    ref,
 	}, nil
 }
 
@@ -234,54 +171,6 @@ const (
 	CheckElixirSDK     = "sdk/elixir"
 )
 
-// Check that everything works. Use this as CI entrypoint.
-func (dev *DaggerDev) Check(ctx context.Context,
-	// Directories to check
-	// +optional
-	targets []string,
-) error {
-	var routes = map[string]Check{
-		CheckDocs:          (&Docs{Dagger: dev}).Lint,
-		CheckPythonSDK:     dev.sdkCheck("python"),
-		CheckGoSDK:         dev.sdkCheck("go"),
-		CheckTypescriptSDK: dev.sdkCheck("typescript"),
-		CheckPHPSDK:        dev.sdkCheck("php"),
-		CheckJavaSDK:       dev.sdkCheck("java"),
-		CheckRustSDK:       dev.sdkCheck("rust"),
-		CheckElixirSDK:     dev.sdkCheck("elixir"),
-	}
-	if len(targets) == 0 {
-		targets = make([]string, 0, len(routes))
-		for key := range routes {
-			targets = append(targets, key)
-		}
-	}
-	for _, target := range targets {
-		if _, exists := routes[target]; !exists {
-			return fmt.Errorf("no such target: %s", target)
-		}
-	}
-	eg, ctx := errgroup.WithContext(ctx)
-	for _, target := range targets {
-		check := routes[target]
-		eg.Go(func() error { return check(ctx) })
-	}
-	return eg.Wait()
-}
-
-// Develop Dagger SDKs
-func (dev *DaggerDev) SDK() *SDK {
-	return &SDK{
-		Go:         NewGoSDK(dev.Src, dev.Engine()),
-		Python:     &PythonSDK{Dagger: dev},
-		Typescript: &TypescriptSDK{Dagger: dev},
-		Elixir:     &ElixirSDK{Dagger: dev},
-		Rust:       &RustSDK{Dagger: dev},
-		PHP:        &PHPSDK{Dagger: dev},
-		Java:       &JavaSDK{Dagger: dev},
-	}
-}
-
 // Creates a dev container that has a running CLI connected to a dagger engine
 func (dev *DaggerDev) Dev(
 	ctx context.Context,
@@ -293,37 +182,19 @@ func (dev *DaggerDev) Dev(
 	image *Distro,
 	// Enable experimental GPU support
 	// +optional
-	gpuSupport bool,
+	gpu bool,
 ) (*dagger.Container, error) {
 	if target == nil {
 		target = dag.Directory()
 	}
-
-	svc, err := dev.
-		Engine().
-		WithImage(image).
-		WithGpuSupport(gpuSupport).
-		Service(ctx)
-	if err != nil {
-		return nil, err
-	}
-	endpoint, err := svc.Endpoint(ctx, dagger.ServiceEndpointOpts{Scheme: "tcp"})
-	if err != nil {
-		return nil, err
-	}
-
-	client, err := dev.CLI().Binary(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
-	return dev.Go().Env().
-		WithMountedDirectory("/mnt", target).
-		WithMountedFile("/usr/bin/dagger", client).
-		WithEnvVariable("_EXPERIMENTAL_DAGGER_CLI_BIN", "/usr/bin/dagger").
-		WithServiceBinding("dagger-engine", svc).
-		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", endpoint).
-		WithWorkdir("/mnt"), nil
+	return dag.
+		Engine(dagger.EngineOpts{
+			Image: image,
+			Gpu:   gpu,
+		}).
+		Container().
+		WithMountedDirectory("/root", target).
+		WithWorkdir("/root")
 }
 
 // Creates an static dev build

@@ -9,7 +9,6 @@ import (
 	"github.com/dagger/dagger/engine/distconsts"
 
 	"github.com/moby/buildkit/identity"
-	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -25,17 +24,53 @@ func New(
 	ctx context.Context,
 	// +optional
 	// +defaultPath="/"
-	// +ignore=[".git", "bin", "**/.DS_Store", "**/node_modules", "**/__pycache__", "**/.venv", "**/.mypy_cache", "**/.pytest_cache", "**/.ruff_cache", "sdk/python/dist", "sdk/python/**/sdk", "go.work", "go.work.sum", "**/*_test.go", "**/target", "**/deps", "**/cover", "**/_build"]
+	// +ignore=["*", "!**.go", "!**/go.mod", "!**/go.sum", "!**.graphqls", "!**.proto", "!**.json", "!**.yaml", "!**/testdata", "!**.sql"]
 	source *dagger.Directory,
+	// Git commit to include in engine version
 	// +optional
-	version string,
+	commit string,
+	// Git tag to include in engine version, in short format
 	// +optional
 	tag string,
+	// Custom engine config values
+	// +optional
+	config []string,
+	// +optional
+	args []string,
+	// Build the engine with race checking mode
+	// +optional
+	race bool,
+	// Build the engine with tracing enabled
+	// +optional
+	trace bool,
+	// +optional
+	// Set an instance name, to spawn different instances of the service, each
+	// with their own lifecycle and state volume
+	instanceName string,
+	// +optional
+	dockerConfig *dagger.Secret,
+	// Build the engine with GPU support
+	// +optional
+	gpu bool,
+	// +optional
+	platform dagger.Platform,
+	// Choose a flavor of base image
+	// +optional
+	image *Distro,
 ) *Engine {
 	return &Engine{
-		Source:  source,
-		Version: version,
-		Tag:     tag,
+		Source:       source,
+		Tag:          tag,
+		Commit:       commit,
+		Config:       config,
+		Args:         args,
+		Race:         race,
+		Trace:        trace,
+		InstanceName: instanceName,
+		DockerConfig: dockerConfig,
+		GPU:          gpu,
+		Platform:     platform,
+		Image:        image,
 	}
 }
 
@@ -45,72 +80,88 @@ type Engine struct {
 
 	Trace bool // +private
 
-	Source       *dagger.Directory   // +private
-	Version      string              // +private
-	Tag          string              // +private
-	Race         bool                // +private
-	GpuSupport   bool                // +private
-	Image        *Distro             // +private
-	Platform     dagger.Platform     // +private
-	CacheVolume  *dagger.CacheVolume // +private
-	InstanceName string              // +private
-	DockerConfig *dagger.Secret      // +private
+	Source       *dagger.Directory // +private
+	Commit       string            // +private
+	Tag          string            // +private
+	Race         bool              // +private
+	InstanceName string            // +private
+	DockerConfig *dagger.Secret    // +private
+	GPU          bool              // +private
+	Platform     dagger.Platform   // +private
+	Image        *Distro           // +private
 }
 
-func (e *Engine) WithConfig(key, value string) *Engine {
-	e.Config = append(e.Config, key+"="+value)
-	return e
+// Run engine tests
+func (engine *Engine) Test(
+	ctx context.Context,
+	// Packages to test (default all)
+	// +optional
+	// +default=["./..."]
+	pkgs []string,
+	// Only run these tests
+	// +optional
+	run string,
+	// Skip these tests
+	// +optional
+	skip string,
+	// Abort test run on first failure
+	// +optional
+	failfast bool,
+	// How many tests to run in parallel - defaults to the number of CPUs
+	// +optional
+	parallel int,
+	// How long before timing out the test run
+	// +optional
+	timeout string,
+	// +optional
+	race bool,
+	// +default=1
+	// +optional
+	count int,
+) error {
+	return dag.Go(engine.Source).Test(ctx, dagger.GoTestOpts{
+		Pkgs:     pkgs,
+		Run:      run,
+		Skip:     skip,
+		Failfast: failfast,
+		Parallel: parallel,
+		Timeout:  timeout,
+		Race:     race,
+		Count:    count,
+	})
 }
 
-func (e *Engine) WithArg(key, value string) *Engine {
-	e.Args = append(e.Args, key+"="+value)
-	return e
-}
-
-func (e *Engine) WithRace() *Engine {
-	e.Race = true
-	return e
-}
-
-func (e *Engine) WithTrace() *Engine {
-	e.Trace = true
-	return e
-}
-
-func (e *Engine) WithGpuSupport(value bool) *Engine {
-	e.GpuSupport = value
-	return e
-}
-
-func (e *Engine) WithImage(image *Distro) *Engine {
-	e.Image = image
-	return e
-}
-
-func (e *Engine) WithPlatform(platform dagger.Platform) *Engine {
-	e.Platform = platform
-	return e
-}
-
-func (e *Engine) WithCacheVolume(volume *dagger.CacheVolume) *Engine {
-	e.CacheVolume = e.CacheVolume
-	return e
-}
-
-// Set an instance name, to spawn different instances of the service, each
-// with their own lifecycle and state volume
-func (e *Engine) WithInstanceName(name string) *Engine {
-	e.InstanceName = name
-	return e
-}
-
-func (e *Engine) WithDockerConfig(config *dagger.Secret) *Engine {
-	e.DockerConfig = config
-	return e
+// List all engine tests, using 'go test -list=.'
+func (e *Engine) Tests(
+	ctx context.Context,
+	// Packages to include in the test list
+	// +optional
+	pkgs []string,
+) (string, error) {
+	return dag.Go(e.Source).Tests(ctx, dagger.GoTestsOpts{
+		Pkgs: pkgs,
+	})
 }
 
 // Build the engine container
-func (e *Engine) Container(ctx context.Context) (*dagger.Container, error) {
+func (e *Engine) Container(
+	ctx context.Context,
+	// Build a dev container, with additional configuration for e2e testing
+	// +optional
+	dev bool,
+	// Scan the container for vulnerabilities after building it
+	// +optional
+	scan bool,
+	// Config files used by the vulnerability scanner
+	// +optional
+	// +defaultPath="."
+	// +ignore=["*", "!.trivyignore", "!trivyignore.yml", "!trivyignore.yaml"]
+	scanConfig *dagger.Directory,
+) (*dagger.Container, error) {
+	if dev {
+		e.Config = append(e.Config, `grpc=address=["unix:///var/run/buildkit/buildkitd.sock", "tcp://0.0.0.0:1234"]`)
+		e.Args = append(e.Args, `network-name=dagger-dev`, `network-cidr=10.88.0.0/16`)
+	}
 	cfg, err := generateConfig(e.Trace, e.Config)
 	if err != nil {
 		return nil, err
@@ -119,9 +170,31 @@ func (e *Engine) Container(ctx context.Context) (*dagger.Container, error) {
 	if err != nil {
 		return nil, err
 	}
-	builder, err := e.builder(ctx)
+	builder, err := newBuilder(ctx, e.Source)
 	if err != nil {
 		return nil, err
+	}
+	builder = builder.
+		WithVersion(e.Version).
+		WithTag(e.Tag).
+		WithRace(e.Race)
+	if e.Platform != "" {
+		builder = builder.WithPlatform(e.Platform)
+	}
+	if e.Image != nil {
+		switch *e.Image {
+		case DistroAlpine:
+			builder = builder.WithAlpineBase()
+		case DistroWolfi:
+			builder = builder.WithWolfiBase()
+		case DistroUbuntu:
+			builder = builder.WithUbuntuBase()
+		default:
+			return nil, fmt.Errorf("unknown base image type %s", *e.Image)
+		}
+	}
+	if e.GPU {
+		builder = builder.WithGPUSupport()
 	}
 	ctr, err := builder.Engine(ctx)
 	if err != nil {
@@ -139,52 +212,43 @@ func (e *Engine) Container(ctx context.Context) (*dagger.Container, error) {
 				Tag:      e.Tag,
 			})).
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "unix:///var/run/buildkit/buildkitd.sock")
-
-	return ctr, nil
-}
-
-func (e *Engine) builder(ctx context.Context) (*Builder, error) {
-	builder, err := newBuilder(ctx, e.Source)
-	if err != nil {
-		return nil, err
+	if dev {
+		ctr = ctr.
+			WithExposedPort(1234, dagger.ContainerWithExposedPortOpts{Protocol: dagger.Tcp}).
+			WithMountedCache(
+				distconsts.EngineDefaultStateDir,
+				e.cacheVolume(),
+				dagger.ContainerWithMountedCacheOpts{
+					// only one engine can run off it's local state dir at a time; Private means that we will attempt to re-use
+					// these cache volumes if they are not already locked to another running engine but otherwise will create a new
+					// one, which gets us best-effort cache re-use for these nested engine services
+					Sharing: dagger.Private,
+				}).
+			WithExec(nil, dagger.ContainerWithExecOpts{
+				UseEntrypoint:            true,
+				InsecureRootCapabilities: true,
+			})
 	}
-	builder = builder.
-		WithVersion(e.Version).
-		WithTag(e.Tag).
-		WithRace(e.Race)
-	if p := e.Platform; p != "" {
-		builder = builder.WithPlatform(p)
-	}
-	if e.Image != nil {
-		switch *e.Image {
-		case DistroAlpine:
-			builder = builder.WithAlpineBase()
-		case DistroWolfi:
-			builder = builder.WithWolfiBase()
-		case DistroUbuntu:
-			builder = builder.WithUbuntuBase()
-		default:
-			return nil, fmt.Errorf("unknown base image type %s", *e.Image)
+	if scan {
+		if _, err := e.Scan(ctx, scanConfig, ctr); err != nil {
+			return ctr, err
 		}
 	}
-	if e.GpuSupport {
-		builder = builder.WithGPUSupport()
-	}
-	return builder, nil
+	return ctr, nil
 }
 
 // Instantiate the engine as a service, and bind it to the given client
 func (e *Engine) Bind(ctx context.Context, client *dagger.Container) *dagger.Container {
 	return client.
-		WithServiceBinding("dagger-engine", func() *dagger.Service {
-			svc, err := e.Service(ctx)
+		With(func(c *dagger.Container) *dagger.Container {
+			ectr, err := e.Container(ctx, true, false, nil)
 			if err != nil {
-				// Each function call gets its own container, so this is ok.
-				// It makes the code simpler by avoiding useless plumbing
-				panic(err)
+				return c.
+					WithEnvVariable("ERR", err.Error()).
+					WithExec([]string{"sh", "-c", "echo $ERR >/dev/stderr; exit 1"})
 			}
-			return svc
-		}()).
+			return c.WithServiceBinding("dagger-engine", ectr.AsService())
+		}).
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "tcp://dagger-engine:1234").
 		WithMountedFile("/.dagger-cli", dag.DaggerCli().Binary(dagger.DaggerCliBinaryOpts{
 			Platform: e.Platform,
@@ -194,11 +258,11 @@ func (e *Engine) Bind(ctx context.Context, client *dagger.Container) *dagger.Con
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_CLI_BIN", "/.dagger-cli").
 		WithExec([]string{"ln", "-s", "/.dagger-cli", "/usr/local/bin/dagger"}).
 		With(func(c *dagger.Container) *dagger.Container {
-			if e.DockerConfig == nil {
-				return c
+			if e.DockerConfig != nil {
+				// this avoids rate limiting in our ci tests
+				return c.WithMountedSecret("/root/.docker/config.json", e.DockerConfig)
 			}
-			// this avoids rate limiting in our ci tests
-			return c.WithMountedSecret("/root/.docker/config.json", e.DockerConfig)
+			return c
 		})
 }
 
@@ -209,40 +273,13 @@ func (e *Engine) cacheVolume() *dagger.CacheVolume {
 	} else {
 		name = "dagger-dev-engine-state-" + identity.NewID()
 	}
-	if e.InstanceName == "" {
+	if e.InstanceName != "" {
 		name += "-" + e.InstanceName
 	}
 	return dagger.Connect().CacheVolume(name)
 }
 
-// Create a test engine service
-func (e *Engine) Service(ctx context.Context) (*dagger.Service, error) {
-	cacheVolume := e.cacheVolume()
-	e = e.
-		WithConfig("grpc", `address=["unix:///var/run/buildkit/buildkitd.sock", "tcp://0.0.0.0:1234"]`).
-		WithArg(`network-name`, `dagger-dev`).
-		WithArg(`network-cidr`, `10.88.0.0/16`)
-	devEngine, err := e.Container(ctx)
-	if err != nil {
-		return nil, err
-	}
-	devEngine = devEngine.
-		WithExposedPort(1234, dagger.ContainerWithExposedPortOpts{Protocol: dagger.Tcp}).
-		WithMountedCache(distconsts.EngineDefaultStateDir, cacheVolume, dagger.ContainerWithMountedCacheOpts{
-			// only one engine can run off it's local state dir at a time; Private means that we will attempt to re-use
-			// these cache volumes if they are not already locked to another running engine but otherwise will create a new
-			// one, which gets us best-effort cache re-use for these nested engine services
-			Sharing: dagger.Private,
-		}).
-		WithExec(nil, dagger.ContainerWithExecOpts{
-			UseEntrypoint:            true,
-			InsecureRootCapabilities: true,
-		})
-
-	return devEngine.AsService(), nil
-}
-
-// Lint the engine
+// Lint the engine source code
 func (e *Engine) Lint(
 	ctx context.Context,
 ) error {
@@ -296,172 +333,26 @@ func (e *Engine) LintGenerate(ctx context.Context) error {
 	)
 }
 
-var targets = []struct {
-	Name       string
-	Tag        string
-	Image      Distro
-	Platforms  []dagger.Platform
-	GPUSupport bool
-}{
-	{
-		Name:      "alpine (default)",
-		Tag:       "%s",
-		Image:     DistroAlpine,
-		Platforms: []dagger.Platform{"linux/amd64", "linux/arm64"},
-	},
-	{
-		Name:       "ubuntu with nvidia variant",
-		Tag:        "%s-gpu",
-		Image:      DistroUbuntu,
-		Platforms:  []dagger.Platform{"linux/amd64"},
-		GPUSupport: true,
-	},
-	{
-		Name:      "wolfi",
-		Tag:       "%s-wolfi",
-		Image:     DistroWolfi,
-		Platforms: []dagger.Platform{"linux/amd64"},
-	},
-	{
-		Name:       "wolfi with nvidia variant",
-		Tag:        "%s-wolfi-gpu",
-		Image:      DistroWolfi,
-		Platforms:  []dagger.Platform{"linux/amd64"},
-		GPUSupport: true,
-	},
-}
-
-// Publish all engine images to a registry
-func (e *Engine) Publish(
+func (e *Engine) Scan(
 	ctx context.Context,
-
-	// Image target to push to
-	image string,
-	// List of tags to use
-	tag []string,
-
+	// Trivy config files
 	// +optional
-	dryRun bool,
-
-	// +optional
-	registry *string,
-	// +optional
-	registryUsername *string,
-	// +optional
-	registryPassword *dagger.Secret,
-) error {
-	// collect all the targets that we are trying to build together, along with
-	// where they need to go to
-	targetResults := make([]struct {
-		Platforms []*dagger.Container
-		Tags      []string
-	}, len(targets))
-
-	eg, egCtx := errgroup.WithContext(ctx)
-	for i, target := range targets {
-		// determine the target tags
-		for _, tag := range tag {
-			targetResults[i].Tags = append(targetResults[i].Tags, fmt.Sprintf(target.Tag, tag))
-		}
-
-		// build all the target platforms
-		targetResults[i].Platforms = make([]*dagger.Container, len(target.Platforms))
-		for j, platform := range target.Platforms {
-			egCtx, span := Tracer().Start(egCtx, fmt.Sprintf("building %s [%s]", target.Name, platform))
-			eg.Go(func() (rerr error) {
-				defer func() {
-					if rerr != nil {
-						span.SetStatus(codes.Error, rerr.Error())
-					}
-					span.End()
-				}()
-				ctr, err := e.
-					WithPlatform(platform).
-					WithImage(&target.Image).
-					WithGpuSupport(target.GPUSupport).
-					Container(egCtx)
-				if err != nil {
-					return err
-				}
-				ctr, err = ctr.Sync(egCtx)
-				if err != nil {
-					return err
-				}
-
-				targetResults[i].Platforms[j] = ctr
-				return nil
-			})
-		}
-	}
-	if err := eg.Wait(); err != nil {
-		return err
-	}
-
-	if dryRun {
-		return nil
-	}
-
-	// push all the targets
-	ctr := dag.Container()
-	if registry != nil && registryUsername != nil && registryPassword != nil {
-		ctr = ctr.WithRegistryAuth(*registry, *registryUsername, registryPassword)
-	}
-	for i, target := range targets {
-		result := targetResults[i]
-
-		if err := func() (rerr error) {
-			ctx, span := Tracer().Start(ctx, fmt.Sprintf("pushing %s", target.Name))
-			defer func() {
-				if rerr != nil {
-					span.SetStatus(codes.Error, rerr.Error())
-				}
-				span.End()
-			}()
-
-			for _, tag := range result.Tags {
-				_, err := ctr.
-					Publish(ctx, fmt.Sprintf("%s:%s", image, tag), dagger.ContainerPublishOpts{
-						PlatformVariants:  result.Platforms,
-						ForcedCompression: dagger.Gzip, // use gzip to avoid incompatibility w/ older docker versions
-					})
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		}(); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (e *Engine) Scan(ctx context.Context) (string, error) {
-	target, err := e.Container(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	ignoreFiles := dag.Directory().WithDirectory("/", e.Source, dagger.DirectoryWithDirectoryOpts{
-		Include: []string{
-			".trivyignore",
-			".trivyignore.yml",
-			".trivyignore.yaml",
-		},
-	})
+	// +defaultPath="."
+	// +ignore=["*", "!.trivyignore", "!trivyignore.yml", "!trivyignore.yaml"]
+	ignoreFiles *dagger.Directory,
+	// The container to scan
+	target *dagger.Container,
+) (string, error) {
 	ignoreFileNames, err := ignoreFiles.Entries(ctx)
 	if err != nil {
 		return "", err
 	}
-
 	// FIXME: trivy module
 	ctr := dag.Container().
 		From("aquasec/trivy:0.50.4").
 		WithMountedFile("/mnt/engine.tar", target.AsTarball()).
 		WithMountedDirectory("/mnt/ignores", ignoreFiles).
 		WithMountedCache("/root/.cache/", dag.CacheVolume("trivy-cache"))
-
 	args := []string{
 		"trivy",
 		"image",
@@ -476,6 +367,5 @@ func (e *Engine) Scan(ctx context.Context) (string, error) {
 		args = append(args, "--ignorefile=/mnt/ignores/"+ignoreFileNames[0])
 	}
 	args = append(args, "--input", "/mnt/engine.tar")
-
 	return ctr.WithExec(args).Stdout(ctx)
 }

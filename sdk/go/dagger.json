@@ -3,12 +3,16 @@
   "sdk": "go",
   "dependencies": [
     {
-      "name": "engine",
-      "source": "../../engine"
+      "name": "codegen",
+      "source": "../../cmd/codegen"
     },
     {
       "name": "dirdiff",
       "source": "../../modules/dirdiff"
+    },
+    {
+      "name": "engine",
+      "source": "../../engine"
     },
     {
       "name": "go",

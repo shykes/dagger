@@ -14,60 +14,69 @@ const (
 	goReleaserVersion = "v2.2.0"
 )
 
-type DaggerCli struct{}
-
-func (cli DaggerCli) Build(
+func New(
+	ctx context.Context,
 	// +optional
 	// +defaultPath="/"
-	// +ignore_0.13=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
-	// stopgap:
-	// +ignore=["bin", "**/node_modules", "**/.venv", "**/__pycache__"]
+	// +ignore=["*", "!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go"]
 	source *dagger.Directory,
-	// +optional
-	version string,
+	// Git tag to use in version string
 	// +optional
 	tag string,
+	// Git commit to use in version string
 	// +optional
-	platform dagger.Platform,
-) *dagger.Directory {
-	return dag.Go(source).
-		Build(dagger.GoBuildOpts{
-			Platform: platform,
-			Pkgs:     []string{"./cmd/dagger"},
+	commit string,
+) (*DaggerCli, error) {
+	v := dag.Version(dagger.VersionOpts{
+		Commit: commit,
+		Tag:    tag,
+	})
+	version, err := v.Version(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tag, err = v.Tag(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &DaggerCli{
+		Gomod: dag.Go(source, dagger.GoOpts{
 			Values: []string{
 				"github.com/dagger/dagger/engine.Version=" + version,
 				"github.com/dagger/dagger/engine.Tag=" + tag,
 			},
-			NoSymbols: true,
-			NoDwarf:   true,
-		})
+		}),
+	}, nil
+}
+
+type DaggerCli struct {
+	Gomod *dagger.Go // +private
+}
+
+func (cli DaggerCli) Build(
+	ctx context.Context,
+	// Platform to build for
+	// +optional
+	platform dagger.Platform,
+) *dagger.Directory {
+	return cli.Gomod.Build(dagger.GoBuildOpts{
+		Platform:  platform,
+		Pkgs:      []string{"./cmd/dagger"},
+		NoSymbols: true,
+		NoDwarf:   true,
+	})
 }
 
 func (cli DaggerCli) Binary(
 	ctx context.Context,
 	// +optional
-	// +defaultPath="/"
-	// +ignore_0.13=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
-	// stopgap:
-	// +ignore=["bin", "**/node_modules", "**/.venv", "**/__pycache__"]
-	source *dagger.Directory,
-	// +optional
-	version string,
-	// +optional
-	tag string,
-	// +optional
 	platform dagger.Platform,
 ) *dagger.File {
-	return dag.Go(source).
-		Binary("./cmd/dagger", dagger.GoBinaryOpts{
-			Platform: platform,
-			Values: []string{
-				"github.com/dagger/dagger/engine.Version=" + version,
-				"github.com/dagger/dagger/engine.Tag=" + tag,
-			},
-			NoSymbols: true,
-			NoDwarf:   true,
-		})
+	return cli.Gomod.Binary("./cmd/dagger", dagger.GoBinaryOpts{
+		Platform:  platform,
+		NoSymbols: true,
+		NoDwarf:   true,
+	})
 }
 
 // Publish the CLI using GoReleaser
@@ -143,10 +152,6 @@ func (cli DaggerCli) TestPublish(
 	// stopgap:
 	// +ignore=["bin", "**/node_modules", "**/.venv", "**/__pycache__"]
 	source *dagger.Directory,
-	// +optional
-	version string,
-	// +optional
-	tag string,
 ) error {
 	// TODO: ideally this would also use go releaser, but we want to run this
 	// step in PRs and locally and we use goreleaser pro features that require
@@ -168,7 +173,7 @@ func (cli DaggerCli) TestPublish(
 			}
 			eg.Go(func() error {
 				_, err := cli.
-					Binary(ctx, source, version, tag, dagger.Platform(platform)).
+					Binary(ctx, dagger.Platform(platform)).
 					Sync(ctx)
 				return err
 			})

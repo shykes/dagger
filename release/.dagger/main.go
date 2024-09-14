@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/moby/buildkit/identity"
+	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -43,11 +44,7 @@ func New(
 ) (Release, error) {
 	if gitRef == "" {
 		// FIXME: this doesn't always work in github actions
-		gitRef, err := dag.
-			Wolfi().
-			Container(dagger.WolfiContainerOpts{Packages: []string{"git"}}).
-			WithMountedDirectory("/src", gitDir).
-			WithWorkdir("/src").
+		gitRef, err := git(gitDir).
 			WithFile("/bin/get-ref.sh", getRefScript).
 			WithExec([]string{"sh", "/bin/get-ref.sh"}).
 			Stdout(ctx)
@@ -62,6 +59,14 @@ func New(
 		Tag:                  gitRef, // FIXME: is this correct?
 		ChangeNotes:          changeNotes,
 	}, nil
+}
+
+func git(workdir *dagger.Directory) *dagger.Container {
+	return dag.
+		Wolfi().
+		Container(dagger.WolfiContainerOpts{Packages: []string{"git"}}).
+		WithMountedDirectory("/src", workdir).
+		WithWorkdir("/src")
 }
 
 // Lint scripts files
@@ -97,6 +102,147 @@ func (r Release) Test(ctx context.Context) error {
 		return r.PublishPythonSDK(ctx, true, "", nil, "https://github.com/dagger/dagger.git", nil)
 	})
 	return eg.Wait()
+}
+
+// Engine image targets to publish
+var targets = []struct {
+	Name       string
+	Tag        string
+	Image      string // FIXME use Distro type from engine
+	Platforms  []dagger.Platform
+	GPUSupport bool
+}{
+	{
+		Name:  "alpine (default)",
+		Tag:   "%s",
+		Image: "alpine", // FIXME: reuse consts from engine module
+
+		Platforms: []dagger.Platform{"linux/amd64", "linux/arm64"},
+	},
+	{
+		Name:  "ubuntu with nvidia variant",
+		Tag:   "%s-gpu",
+		Image: "ubuntu", // FIXME: reuse consts from engine module
+
+		Platforms:  []dagger.Platform{"linux/amd64"},
+		GPUSupport: true,
+	},
+	{
+		Name:  "wolfi",
+		Tag:   "%s-wolfi",
+		Image: "wolfi", // FIXME: reuse consts from engine module
+
+		Platforms: []dagger.Platform{"linux/amd64"},
+	},
+	{
+		Name:       "wolfi with nvidia variant",
+		Tag:        "%s-wolfi-gpu",
+		Image:      "wolfi", // FIXME: reuse consts from engine module
+		Platforms:  []dagger.Platform{"linux/amd64"},
+		GPUSupport: true,
+	},
+}
+
+// Publish all engine images to a registry
+func (r Release) PublishEngine(
+	ctx context.Context,
+	// Image target to push to
+	image string,
+	// List of tags to use
+	tag []string,
+	// +optional
+	dryRun bool,
+	// +optional
+	registry *string,
+	// +optional
+	registryUsername *string,
+	// +optional
+	registryPassword *dagger.Secret,
+) error {
+	// collect all the targets that we are trying to build together, along with
+	// where they need to go to
+	targetResults := make([]struct {
+		Platforms []*dagger.Container
+		Tags      []string
+	}, len(targets))
+	eg, egCtx := errgroup.WithContext(ctx)
+	for i, target := range targets {
+		// determine the target tags
+		for _, tag := range tag {
+			targetResults[i].Tags = append(targetResults[i].Tags, fmt.Sprintf(target.Tag, tag))
+		}
+		// build all the target platforms
+		targetResults[i].Platforms = make([]*dagger.Container, len(target.Platforms))
+		for j, platform := range target.Platforms {
+			i, j := i, j // https://golang.org/doc/faq#closures_and_goroutines
+			egCtx, span := Tracer().Start(egCtx, fmt.Sprintf("building %s [%s]", target.Name, platform))
+			eg.Go(func() (rerr error) {
+				defer func() {
+					if rerr != nil {
+						span.SetStatus(codes.Error, rerr.Error())
+					}
+					span.End()
+				}()
+				ctr, err := dag.
+					Engine(dagger.EngineOpts{
+						Gpu:      target.GPUSupport,
+						Image:    target.Image,
+						Platform: platform,
+					}).
+					Container(dagger.EngineContainerOpts{
+						Scan: true, // Scan before releasing
+					}).
+					// Make sure all containers build before pushing anything
+					Sync(egCtx)
+				if err != nil {
+					return err
+				}
+				targetResults[i].Platforms[j] = ctr
+				return nil
+			})
+		}
+	}
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+	if dryRun {
+		return nil
+	}
+
+	// push all the targets
+	ctr := dag.Container()
+	if registry != nil && registryUsername != nil && registryPassword != nil {
+		ctr = ctr.WithRegistryAuth(*registry, *registryUsername, registryPassword)
+	}
+	for i, target := range targets {
+		result := targetResults[i]
+
+		if err := func() (rerr error) {
+			ctx, span := Tracer().Start(ctx, fmt.Sprintf("pushing %s", target.Name))
+			defer func() {
+				if rerr != nil {
+					span.SetStatus(codes.Error, rerr.Error())
+				}
+				span.End()
+			}()
+
+			for _, tag := range result.Tags {
+				_, err := ctr.
+					Publish(ctx, fmt.Sprintf("%s:%s", image, tag), dagger.ContainerPublishOpts{
+						PlatformVariants:  result.Platforms,
+						ForcedCompression: dagger.Gzip, // use gzip to avoid incompatibility w/ older docker versions
+					})
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		}(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Publish the Python SDK

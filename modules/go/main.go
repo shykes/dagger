@@ -40,6 +40,23 @@ func New(
 	// The container must have Go installed.
 	// +optional
 	base *dagger.Container,
+
+	// Pass arguments to 'go build -ldflags''
+	// +optional
+	ldflags []string,
+
+	// Add string value definition of the form importpath.name=value
+	// Example: "github.com/my/module.Foo=bar"
+	// +optional
+	values []string,
+
+	// Enable CGO
+	// +optional
+	Cgo bool,
+
+	// Enable race detector. Implies cgo=true
+	// +optional
+	race bool,
 ) Go {
 	if source == nil {
 		source = dag.Directory()
@@ -76,6 +93,10 @@ func New(
 		BuildCache:  buildCache,
 		Base:        base,
 		Sidecar:     sidecar,
+		Ldflags:     ldflags,
+		Values:      values,
+		Cgo:         Cgo,
+		Race:        race,
 	}
 }
 
@@ -97,6 +118,18 @@ type Go struct {
 	Base *dagger.Container
 
 	Sidecar Sidecar // +private
+
+	// Pass arguments to 'go build -ldflags''
+	Ldflags []string
+
+	// Add string value definition of the form importpath.name=value
+	Values []string
+
+	// Enable CGO
+	Cgo bool
+
+	// Enable race detector
+	Race bool
 }
 
 type Sidecar interface {
@@ -122,9 +155,6 @@ func (p Go) Download() Go {
 func (p Go) Env(
 	// +optional
 	platform dagger.Platform,
-	// Enable CGO
-	// +optional
-	cgo bool,
 ) *dagger.Container {
 	return p.Base.
 		// Attach sidecar
@@ -136,7 +166,7 @@ func (p Go) Env(
 		}).
 		// Configure CGO
 		WithEnvVariable("CGO_ENABLED", func() string {
-			if cgo {
+			if p.Cgo {
 				return "1"
 			}
 			return "0"
@@ -163,26 +193,6 @@ func (p Go) Env(
 		WithMountedDirectory("", p.Source)
 }
 
-func goCommand(
-	cmd []string,
-	pkgs []string,
-	ldflags []string,
-	values []string,
-	race bool,
-) []string {
-	for _, val := range values {
-		ldflags = append(ldflags, "-X '"+val+"'")
-	}
-	if len(ldflags) > 0 {
-		cmd = append(cmd, "-ldflags", strings.Join(ldflags, " "))
-	}
-	if race {
-		cmd = append(cmd, "-race")
-	}
-	cmd = append(cmd, pkgs...)
-	return cmd
-}
-
 // List tests
 func (p Go) Tests(
 	ctx context.Context,
@@ -193,7 +203,7 @@ func (p Go) Tests(
 ) (string, error) {
 	script := "go test -list=. " + strings.Join(pkgs, " ") + " | grep ^Test | sort"
 	return p.
-		Env(defaultPlatform, false).
+		Env(defaultPlatform).
 		WithExec([]string{"sh", "-c", script}).
 		Stdout(ctx)
 }
@@ -204,25 +214,12 @@ func (p Go) Build(
 	// +optional
 	// +default=["./..."]
 	pkgs []string,
-	// Pass arguments to 'go build -ldflags''
-	// +optional
-	ldflags []string,
-	// Add string value definition of the form importpath.name=value
-	// Example: "github.com/my/module.Foo=bar"
-	// +optional
-	values []string,
-	// Enable race detector. Implies cgo=true
-	// +optional
-	race bool,
 	// Disable symbol table
 	// +optional
 	noSymbols bool,
 	// Disable DWARF generation
 	// +optional
 	noDwarf bool,
-	// Enable CGO
-	// +optional
-	cgo bool,
 	// Target build platform
 	// +optional
 	platform dagger.Platform,
@@ -231,13 +228,14 @@ func (p Go) Build(
 	// +default="./bin/"
 	output string,
 ) (*dagger.Directory, error) {
-	if race {
-		cgo = true
+	if p.Race {
+		p.Cgo = true
 	}
 	mainPkgs, err := p.ListPackages(ctx, pkgs, true)
 	if err != nil {
 		return nil, err
 	}
+	ldflags := p.Ldflags
 	if noSymbols {
 		ldflags = append(ldflags, "-s")
 	}
@@ -246,10 +244,10 @@ func (p Go) Build(
 	}
 	env := p.
 		Download().
-		Env(platform, cgo)
+		Env(platform)
 	cmd := []string{"go", "build", "-o", output}
 	for _, pkg := range mainPkgs {
-		env = env.WithExec(goCommand(cmd, []string{pkg}, ldflags, values, race))
+		env = env.WithExec(goCommand(cmd, []string{pkg}, ldflags, p.Values, p.Race))
 	}
 	return dag.Directory().WithDirectory(output, env.Directory(output)), nil
 }
@@ -259,25 +257,12 @@ func (p Go) Binary(
 	ctx context.Context,
 	// Which package to build
 	pkg string,
-	// Pass arguments to 'go build -ldflags''
-	// +optional
-	ldflags []string,
-	// Add string value definition of the form importpath.name=value
-	// Example: "github.com/my/module.Foo=bar"
-	// +optional
-	values []string,
-	// Enable race detector. Implies cgo=true
-	// +optional
-	race bool,
 	// Disable symbol table
 	// +optional
 	noSymbols bool,
 	// Disable DWARF generation
 	// +optional
 	noDwarf bool,
-	// Enable CGO
-	// +optional
-	cgo bool,
 	// Target build platform
 	// +optional
 	platform dagger.Platform,
@@ -285,12 +270,8 @@ func (p Go) Binary(
 	dir, err := p.Build(
 		ctx,
 		[]string{pkg},
-		ldflags,
-		values,
-		race,
 		noSymbols,
 		noDwarf,
-		cgo,
 		platform,
 		"./bin/",
 	)
@@ -334,22 +315,9 @@ func (p Go) Test(
 	// +optional
 	// +default=["./..."]
 	pkgs []string,
-	// Pass arguments to 'go build -ldflags''
-	// +optional
-	ldflags []string,
-	// Add string value definition of the form importpath.name=value
-	// Example: "github.com/my/module.Foo=bar"
-	// +optional
-	values []string,
-	// Enable race detector. Implies cgo=true
-	// +optional
-	race bool,
-	// Enable CGO
-	// +optional
-	cgo bool,
 ) error {
-	if race {
-		cgo = true
+	if p.Race {
+		p.Cgo = true
 	}
 	cmd := []string{"go", "test", "-v"}
 	if parallel != 0 {
@@ -364,8 +332,8 @@ func (p Go) Test(
 	}
 	_, err := p.
 		Download().
-		Env(defaultPlatform, cgo).
-		WithExec(goCommand(cmd, pkgs, ldflags, values, race)).
+		Env(defaultPlatform).
+		WithExec(goCommand(cmd, pkgs, p.Ldflags, p.Values, p.Race)).
 		Sync(ctx)
 	return err
 }
@@ -383,7 +351,7 @@ func (p Go) ListPackages(
 ) ([]string, error) {
 	args := []string{"go", "list", "-f", `{{if eq .Name "main"}}{{.Dir}}{{end}}`}
 	args = append(args, pkgs...)
-	out, err := p.Env(defaultPlatform, false).WithExec(args).Stdout(ctx)
+	out, err := p.Env(defaultPlatform).WithExec(args).Stdout(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -392,6 +360,26 @@ func (p Go) ListPackages(
 		result[i] = strings.Replace(result[i], "/app/", "./", 1)
 	}
 	return result, nil
+}
+
+func goCommand(
+	cmd []string,
+	pkgs []string,
+	ldflags []string,
+	values []string,
+	race bool,
+) []string {
+	for _, val := range values {
+		ldflags = append(ldflags, "-X '"+val+"'")
+	}
+	if len(ldflags) > 0 {
+		cmd = append(cmd, "-ldflags", strings.Join(ldflags, " "))
+	}
+	if race {
+		cmd = append(cmd, "-race")
+	}
+	cmd = append(cmd, pkgs...)
+	return cmd
 }
 
 // Lint the project
@@ -413,7 +401,7 @@ func (p Go) Lint(
 			ctx, span := Tracer().Start(ctx, "tidy "+path.Clean(pkg))
 			defer span.End()
 			beforeTidy := p.Source.Directory(pkg)
-			afterTidy := p.Env(defaultPlatform, false).WithWorkdir(pkg).WithExec([]string{"go", "mod", "tidy"}).Directory(".")
+			afterTidy := p.Env(defaultPlatform).WithWorkdir(pkg).WithExec([]string{"go", "mod", "tidy"}).Directory(".")
 			err := dag.Dirdiff().AssertEqual(ctx, beforeTidy, afterTidy, []string{"go.mod", "go.sum"})
 			if err != nil {
 				span.SetStatus(codes.Error, err.Error())

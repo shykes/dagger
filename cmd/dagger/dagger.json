@@ -5,8 +5,12 @@
     {
       "name": "go",
       "source": "../../modules/go"
+    },
+    {
+      "name": "version",
+      "source": "../../version"
     }
   ],
   "source": ".dagger",
-  "engineVersion": "v0.12.7"
+  "engineVersion": "v0.13.0"
 }
