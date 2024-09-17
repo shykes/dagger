@@ -61,6 +61,10 @@ func New(
 	// +optional
 	// +default="alpine"
 	image Distro,
+	// Go version to use when building the engine
+	// +optional
+	// +default="1.23.0"
+	goVersion string,
 ) (*Engine, error) {
 	values, err := dag.Version(dagger.VersionOpts{
 		Commit: commit,
@@ -69,8 +73,15 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	goBase, err := goBase(image)
+	if err != nil {
+		return nil, err
+	}
+	// FIXME: load go base image, to pass to gomod
+	// OR change gomod to being lazy
 	return &Engine{
 		Gomod: dag.Go(source, dagger.GoOpts{
+			Base: goBase,
 			Race:   race,
 			Values: values,
 			Ldflags: []string{""},
@@ -83,6 +94,7 @@ func New(
 		GPU:          gpu,
 		Platform:     platform,
 		Image:        image,
+		GoVersion: goVersion,
 	}, nil
 }
 
@@ -98,11 +110,12 @@ type Engine struct {
 	GPU          bool            // +private
 	Platform     dagger.Platform // +private
 	Image        Distro         // +private
+	GoVersion string // +private
 }
 
 // Build one of the binaries involved in the engine build
-func (e *Engine) Binary(package string) *dagger.File {
-	return e.Gomod.Binary(package, dagger.GoBinaryOpts{
+func (e *Engine) Binary(pkg string) *dagger.File {
+	return e.Gomod.Binary(pkg, dagger.GoBinaryOpts{
 		Platform: e.Platform,
 		NoSymbols: true,
 		NoDwarf: true,
@@ -175,7 +188,7 @@ func (e *Engine) Base() (*dagger.Container, error) {
 			return wolfiBase(), nil
 	}
 	// FIXME: verify at constructor
-	return nil, fmt.Errorf("unsupported base image flavor: %s", *.Image)
+	return nil, fmt.Errorf("unsupported base image flavor: %s", e.Image)
 }
 
 func (e *Engine) wolfiBase() (*dagger.Container, error) {
@@ -311,16 +324,18 @@ func (e *Engine) Container(
 		}).Binary()).
 		WithFile("/usr/local/bin/dumb-init", dag.DumbInit(dagger.DumbInitOpts{
 			Platform: e.Platform,
-		})).
+		}))
+		WithDirectory("/usr/local/bin/", dag.Qemu(dagger.QemuOpts{
+			Platform: e.Platform,
+		}).Binaries())
 
-	// TODO: build qemu binaries
+
 	// TODO: build cni plugins
 	// TODO: get builtin SDK contents
 
 	// TODO: symlink buildctl to dial-stdio
 	// TODO: create empty engine state directory
 	//
-	}
 
 	if dev {
 		e.Config = append(e.Config, `grpc=address=["unix:///var/run/buildkit/buildkitd.sock", "tcp://0.0.0.0:1234"]`)
@@ -446,8 +461,42 @@ func (e *Engine) Lint(
 	return eg.Wait()
 }
 
+func (e *Engine) GoBase() *dagger.Container {
+	switch e.Image {
+		// This is a base for a build environment,
+		// not to be confused with the base image of the engine
+		case "ubuntu", default:
+			// TODO: there's no guarantee the bullseye libc is compatible with the ubuntu image w/ rebase this onto
+			return dag.Container().
+				From(fmt.Sprintf("golang:%s-bullseye", e.GoVersion)).
+				WithExec([]string{"apt-get", "update"}).
+				WithExec([]string{"apt-get", "install", "-y", "git", "build-essential"})
+		case "wolfi":
+			// FIXME: use
+			return dag.Container().
+					From("cgr.dev/chainguard/wolfi-base").
+					WithExec([]string{"apk", "add", "build-base", "git"}).
+					WithExec([]string{"apk", "add", "go-" + e.GoVersion})
+		case "alpine":
+			fallthrough
+		default:
+			return dag.Container().
+				From("golang:" + e.GoVersion + "-alpine").
+				WithExec([]string{"apk", "add", "build-base", "git"})
+	}
+}
+
+
+
+// An environment to build this engine
 func (e *Engine) Env() *dagger.Container {
-	return dag.Go(e.Source).Env()
+
+	}
+	return dag.Go(source, dagger.GoOpts{
+		// Probably not needed with a custom base, but keep just in case
+		Version: e.GoVersion,
+		Base: base,
+	})
 }
 
 // Generate any engine-related files
