@@ -143,6 +143,106 @@ var targets = []struct {
 	},
 }
 
+// Verify that the CLI can be published, without actually publishing anything
+func (r Release) TestPublishCli(ctx context.Context) {
+	// TODO: ideally this would also use go releaser, but we want to run this
+	// step in PRs and locally and we use goreleaser pro features that require
+	// a key which is private. For now, this just builds the CLI for the same
+	// targets so there's at least some coverage
+	oses := []string{"linux", "windows", "darwin"}
+	arches := []string{"amd64", "arm64", "arm"}
+
+	eg, _ := errgroup.WithContext(context.Background())
+	// Check that the build is not broken on any target platform
+	for _, os := range oses {
+		for _, arch := range arches {
+			if arch == "arm" && os == "darwin" {
+				continue
+			}
+			platform := os + "/" + arch
+			if arch == "arm" {
+				platform += "/v7" // not always correct but not sure of better way
+			}
+			eg.Go(func() error {
+				_, err := cli.
+					Binary(ctx, dagger.Platform(platform)).
+					Sync(ctx)
+				return err
+			})
+		}
+	}
+	// Test that the goreleaser environment is not broken
+	eg.Go(func() error {
+		_, err := cli.Goreleaser().Sync(ctx)
+		return err
+	})
+	return eg.Wait()
+}
+
+// Publish the CLI using GoReleaser
+func (r Release) PublishCli(
+	ctx context.Context,
+	// +optional
+	// +defaultPath="/"
+	// +ignore_0.13=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
+	// stopgap:
+	// +ignore=["bin", "**/node_modules", "**/.venv", "**/__pycache__"]
+	source *dagger.Directory,
+	// +optional
+	version string,
+	// +optional
+	tag string,
+	githubOrgName string,
+	githubToken *dagger.Secret,
+	goreleaserKey *dagger.Secret,
+	awsAccessKeyID *dagger.Secret,
+	awsSecretAccessKey *dagger.Secret,
+	awsRegion *dagger.Secret,
+	awsBucket *dagger.Secret,
+	artefactsFQDN string,
+) error {
+	ctr := cli.Goreleaser().WithMountedDirectory("", source)
+	// Verify tag
+	_, err := ctr.WithExec([]string{"git", "show-ref", "--verify", "refs/tags/" + tag}).Sync(ctx)
+	if err != nil {
+		err, ok := err.(*ExecError)
+		if !ok || !strings.Contains(err.Stderr, "not a valid ref") {
+			return err
+		}
+		// clear the set tag
+		tag = ""
+		// goreleaser refuses to run if there isn't a tag, so set it to a dummy but valid semver
+		ctr = ctr.WithExec([]string{"git", "tag", "0.0.0"})
+	}
+	args := []string{"release", "--clean", "--skip=validate", "--verbose"}
+	if tag != "" {
+		args = append(args, "--release-notes", fmt.Sprintf(".changes/%s.md", tag))
+	} else {
+		// if this isn't an official semver version, do a dev release
+		args = append(args,
+			"--nightly",
+			"--config", ".goreleaser.nightly.yml",
+		)
+	}
+	_, err = ctr.
+		WithEnvVariable("GH_ORG_NAME", githubOrgName).
+		WithSecretVariable("GITHUB_TOKEN", githubToken).
+		WithSecretVariable("GORELEASER_KEY", goreleaserKey).
+		WithSecretVariable("AWS_ACCESS_KEY_ID", awsAccessKeyID).
+		WithSecretVariable("AWS_SECRET_ACCESS_KEY", awsSecretAccessKey).
+		WithSecretVariable("AWS_REGION", awsRegion).
+		WithSecretVariable("AWS_BUCKET", awsBucket).
+		WithEnvVariable("ARTEFACTS_FQDN", artefactsFQDN).
+		WithEnvVariable("ENGINE_VERSION", version).
+		WithEnvVariable("ENGINE_TAG", tag).
+		WithEntrypoint([]string{"/sbin/tini", "--", "/entrypoint.sh"}).
+		WithExec(args, dagger.ContainerWithExecOpts{
+			UseEntrypoint: true,
+		}).
+		Sync(ctx)
+	return err
+}
+
 // Publish all engine images to a registry
 func (r Release) PublishEngine(
 	ctx context.Context,

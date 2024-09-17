@@ -3,8 +3,8 @@
   "sdk": "go",
   "dependencies": [
     {
-      "name": "version",
-      "source": "../version"
+      "name": "runc",
+      "source": "runc"
     },
     {
       "name": "codegen",
@@ -25,6 +25,10 @@
     {
       "name": "supermod",
       "source": "../modules/supermod"
+    },
+    {
+      "name": "version",
+      "source": "../version"
     }
   ],
   "source": ".dagger",

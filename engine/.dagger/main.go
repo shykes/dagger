@@ -18,6 +18,11 @@ const (
 	DistroAlpine = "alpine"
 	DistroWolfi  = "wolfi"
 	DistroUbuntu = "ubuntu"
+	ubuntuVersion   = "22.04"
+	runcVersion     = "v1.1.12"
+	cniVersion      = "v1.5.0"
+	qemuBinImage    = "tonistiigi/binfmt@sha256:e06789462ac7e2e096b53bfd9e607412426850227afeb1d0f5dfa48a731e0ba5"
+	dumbInitVersion = "v1.2.5"
 )
 
 func New(
@@ -56,39 +61,54 @@ func New(
 	platform dagger.Platform,
 	// Choose a flavor of base image
 	// +optional
-	image *Distro,
-) *Engine {
+	// +default="alpine"
+	image Distro,
+) (*Engine, error) {
+	values, err := dag.Version(dagger.VersionOpts{
+		Commit: commit,
+		Tag:    tag,
+	}).GoValues(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return &Engine{
-		Source:       source,
-		Tag:          tag,
-		Commit:       commit,
+		Gomod: dag.Go(source, dagger.GoOpts{
+			Race:   race,
+			Values: values,
+			Ldflags: []string{""},
+		}),
 		Config:       config,
 		Args:         args,
-		Race:         race,
 		Trace:        trace,
 		InstanceName: instanceName,
 		DockerConfig: dockerConfig,
 		GPU:          gpu,
 		Platform:     platform,
 		Image:        image,
-	}
+	}, nil
 }
 
 type Engine struct {
-	Args   []string // +private
-	Config []string // +private
+	Args   []string   // +private
+	Config []string   // +private
+	Gomod  *dagger.Go // +private
 
 	Trace bool // +private
 
-	Source       *dagger.Directory // +private
-	Commit       string            // +private
-	Tag          string            // +private
-	Race         bool              // +private
-	InstanceName string            // +private
-	DockerConfig *dagger.Secret    // +private
-	GPU          bool              // +private
-	Platform     dagger.Platform   // +private
-	Image        *Distro           // +private
+	InstanceName string          // +private
+	DockerConfig *dagger.Secret  // +private
+	GPU          bool            // +private
+	Platform     dagger.Platform // +private
+	Image        Distro         // +private
+}
+
+// Build one of the binaries involved in the engine build
+func (e *Engine) Binary(name string) *dagger.File {
+	return e.Gomod.Binary("./cmd/" + name, dagger.GoBinaryOpts{
+		Platform: e.Platform,
+		NoSymbols: true,
+		NoDwarf: true,
+	})
 }
 
 // Run engine tests
@@ -113,20 +133,17 @@ func (engine *Engine) Test(
 	// How long before timing out the test run
 	// +optional
 	timeout string,
-	// +optional
-	race bool,
 	// +default=1
 	// +optional
 	count int,
 ) error {
-	return dag.Go(engine.Source).Test(ctx, dagger.GoTestOpts{
+	return engine.Gomod.Test(ctx, dagger.GoTestOpts{
 		Pkgs:     pkgs,
 		Run:      run,
 		Skip:     skip,
 		Failfast: failfast,
 		Parallel: parallel,
 		Timeout:  timeout,
-		Race:     race,
 		Count:    count,
 	})
 }
@@ -138,9 +155,133 @@ func (e *Engine) Tests(
 	// +optional
 	pkgs []string,
 ) (string, error) {
-	return dag.Go(e.Source).Tests(ctx, dagger.GoTestsOpts{
+	return e.Gomod.Tests(ctx, dagger.GoTestsOpts{
 		Pkgs: pkgs,
 	})
+}
+
+// Build the base image for the engine, based on configured flavor
+func (e *Engine) Base() (*dagger.Container, error) {
+	if e.GPU {
+		platformSpec := platforms.Normalize(platforms.MustParse(string(e.Platform)))
+		if arch := platformSpec.Architecture; arch != "amd64" {
+			return nil, fmt.Errorf("gpu support requires %q arch, not %q", "amd64", arch)
+		}
+	}
+	switch e.Image {
+		case DistroAlpine:
+			return alpineBase(), nil
+		case DistroUbuntu:
+			return ubuntuBase(), nil
+		case DistroWolfi:
+			return wolfiBase(), nil
+	}
+	// FIXME: verify at constructor
+	return nil, fmt.Errorf("unsupported base image flavor: %s", *.Image)
+}
+
+func (e *Engine) wolfiBase() (*dagger.Container, error) {
+	// FIXME: use wolfi module
+	base := dag.
+		Container(dagger.ContainerOpts{Platform: build.platform}).
+		From("cgr.dev/chainguard/wolfi-base").
+		// NOTE: wrapping the apk installs with this time based env ensures that the cache is invalidated
+		// once-per day. This is a very unfortunate workaround for the poor caching "apk add" as an exec
+		// gives us.
+		// Fortunately, better approaches are on the horizon w/ Zenith, for which there are already apk
+		// modules that fix this problem and always result in the latest apk packages for the given alpine
+		// version being used (with optimal caching).
+		WithEnvVariable("DAGGER_APK_CACHE_BUSTER", fmt.Sprintf("%d", time.Now().Truncate(24*time.Hour).Unix())).
+		WithExec([]string{"apk", "upgrade"}).
+		WithExec([]string{
+			"apk", "add", "--no-cache",
+			// for Buildkit
+			"git", "openssh", "pigz", "xz",
+			// for CNI
+			"iptables", "ip6tables", "dnsmasq",
+		}).
+		WithoutEnvVariable("DAGGER_APK_CACHE_BUSTER")
+	if e.GPU {
+		base = base.
+			WithExec([]string{"apk", "add", "chainguard-keys"}).
+			WithExec([]string{
+				"sh", "-c",
+				`echo "https://packages.cgr.dev/extras" >> /etc/apk/repositories`,
+			}).
+			WithExec([]string{"apk", "update"}).
+			WithExec([]string{"apk", "add", "nvidia-driver", "nvidia-tools"})
+	}
+	return base
+}
+
+func (e *Engine) alpineBase() (*dagger.Container, error) {
+	if e.GPU {
+		return nil, fmt.Errorf("can't build GPU-enabled engine on Alpine Linux base")
+	}
+	return dag.
+		Container(dagger.ContainerOpts{Platform: e.Platform}).
+		From(distconsts.AlpineImage).
+		// NOTE: wrapping the apk installs with this time based env ensures that the cache is invalidated
+		// once-per day. This is a very unfortunate workaround for the poor caching "apk add" as an exec
+		// gives us.
+		// Fortunately, better approaches are on the horizon w/ Zenith, for which there are already apk
+		// modules that fix this problem and always result in the latest apk packages for the given alpine
+		// version being used (with optimal caching).
+		WithEnvVariable("DAGGER_APK_CACHE_BUSTER", fmt.Sprintf("%d", time.Now().Truncate(24*time.Hour).Unix())).
+		WithExec([]string{"apk", "upgrade"}).
+		WithExec([]string{
+			"apk", "add", "--no-cache",
+			// for Buildkit
+			"git", "openssh", "pigz", "xz",
+			// for CNI
+			"dnsmasq", "iptables", "ip6tables", "iptables-legacy",
+		}).
+		WithExec([]string{"sh", "-c", `
+			set -e
+			ln -s /sbin/iptables-legacy /usr/sbin/iptables
+			ln -s /sbin/iptables-legacy-save /usr/sbin/iptables-save
+			ln -s /sbin/iptables-legacy-restore /usr/sbin/iptables-restore
+			ln -s /sbin/ip6tables-legacy /usr/sbin/ip6tables
+			ln -s /sbin/ip6tables-legacy-save /usr/sbin/ip6tables-save
+			ln -s /sbin/ip6tables-legacy-restore /usr/sbin/ip6tables-restore
+		`}).
+		WithoutEnvVariable("DAGGER_APK_CACHE_BUSTER")
+}
+
+func (e *Engine) ubuntuBase() (*dagger.Container, error) {
+	base := dag.Container(dagger.ContainerOpts{Platform: e.Platform}).
+		From("ubuntu:"+ubuntuVersion).
+		WithEnvVariable("DEBIAN_FRONTEND", "noninteractive").
+		WithEnvVariable("DAGGER_APT_CACHE_BUSTER", fmt.Sprintf("%d", time.Now().Truncate(24*time.Hour).Unix())).
+		WithExec([]string{"apt-get", "update"}).
+		WithExec([]string{
+			"apt-get", "install", "-y",
+			"iptables", "git", "dnsmasq-base", "network-manager",
+			"gpg", "curl",
+		}).
+		WithExec([]string{
+			"update-alternatives",
+			"--set", "iptables", "/usr/sbin/iptables-legacy",
+		}).
+		WithExec([]string{
+			"update-alternatives",
+			"--set", "ip6tables", "/usr/sbin/ip6tables-legacy",
+		}).
+		WithoutEnvVariable("DAGGER_APT_CACHE_BUSTER")
+	if e.GPU {
+		base = base.
+			WithExec([]string{
+				"sh", "-c",
+				`curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg`,
+			}).
+			WithExec([]string{
+				"sh", "-c",
+				`curl -s -L https://nvidia.github.io/libnvidia-container/experimental/"$(. /etc/os-release;echo $ID$VERSION_ID)"/libnvidia-container.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | tee /etc/apt/sources.list.d/nvidia-container-toolkit.list`,
+			}).
+			WithExec([]string{"apt-get", "update"}).
+			WithExec([]string{"apt-get", "install", "-y", "nvidia-container-toolkit"})
+	}
+	return base
 }
 
 // Build the engine container
@@ -158,52 +299,49 @@ func (e *Engine) Container(
 	// +ignore=["*", "!.trivyignore", "!trivyignore.yml", "!trivyignore.yaml"]
 	scanConfig *dagger.Directory,
 ) (*dagger.Container, error) {
-	if dev {
-		e.Config = append(e.Config, `grpc=address=["unix:///var/run/buildkit/buildkitd.sock", "tcp://0.0.0.0:1234"]`)
-		e.Args = append(e.Args, `network-name=dagger-dev`, `network-cidr=10.88.0.0/16`)
-	}
-	cfg, err := generateConfig(e.Trace, e.Config)
-	if err != nil {
-		return nil, err
-	}
-	entrypoint, err := generateEntrypoint(e.Args)
-	if err != nil {
-		return nil, err
-	}
-	builder, err := newBuilder(ctx, e.Source)
-	if err != nil {
-		return nil, err
-	}
-	builder = builder.
-		WithVersion(e.Version).
-		WithTag(e.Tag).
-		WithRace(e.Race)
-	if e.Platform != "" {
-		builder = builder.WithPlatform(e.Platform)
-	}
-	if e.Image != nil {
-		switch *e.Image {
-		case DistroAlpine:
-			builder = builder.WithAlpineBase()
-		case DistroWolfi:
-			builder = builder.WithWolfiBase()
-		case DistroUbuntu:
-			builder = builder.WithUbuntuBase()
-		default:
-			return nil, fmt.Errorf("unknown base image type %s", *e.Image)
-		}
-	}
-	if e.GPU {
-		builder = builder.WithGPUSupport()
-	}
-	ctr, err := builder.Engine(ctx)
+	ctr, err := e.Base(ctx)
 	if err != nil {
 		return nil, err
 	}
 	ctr = ctr.
+		WithFile("/usr/local/bin/dagger-engine", e.Binary("engine")).
+		WithFile("/usr/bin/dial-stdio", e.Binary("dialstdio")).
+		WithFile("/opt/cni/bin/dnsname", e.Binary("dnsname")).
+		WithFile("/usr/local/bin/runc", dag.Runc(dagger.RuncOpts{
+			Platform: e.Platform,
+		}).Binary())
+	// TODO: build dial-stdio binary
+	// TODO: build dumb-init binary
+	// TODO: build qemu binaries
+	// TODO: build cni plugins
+	// TODO: get builtin SDK contents
+
+	// TODO: symlink buildctl to dial-stdio
+	// TODO: create empty engine state directory
+	//
+	}
+
+	if dev {
+		e.Config = append(e.Config, `grpc=address=["unix:///var/run/buildkit/buildkitd.sock", "tcp://0.0.0.0:1234"]`)
+		e.Args = append(e.Args, `network-name=dagger-dev`, `network-cidr=10.88.0.0/16`)
+	}
+
+	// Add engine configuration
+	ctr = ctr.
 		WithFile("/etc/dagger/engine.toml", cfg).
+		cfg, err := generateConfig(e.Trace, e.Config)
+		if err != nil {
+			return nil, err
+		}
+	// Add generated container entrypoint
+
+	entrypoint, err := generateEntrypoint(e.Args)
+		if err != nil {
+			return nil, err
+		}
 		WithFile("/usr/local/bin/dagger-entrypoint.sh", entrypoint).
 		WithEntrypoint([]string{"dagger-entrypoint.sh"}).
+	// Add dagger CLI
 		WithFile(
 			"/usr/local/bin/dagger",
 			dag.DaggerCli().Binary(dagger.DaggerCliBinaryOpts{
@@ -212,6 +350,7 @@ func (e *Engine) Container(
 				Tag:      e.Tag,
 			})).
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "unix:///var/run/buildkit/buildkitd.sock")
+	// Additional settings for a dev container
 	if dev {
 		ctr = ctr.
 			WithExposedPort(1234, dagger.ContainerWithExposedPortOpts{Protocol: dagger.Tcp}).
@@ -229,6 +368,7 @@ func (e *Engine) Container(
 				InsecureRootCapabilities: true,
 			})
 	}
+	// Scan the container if requested
 	if scan {
 		if _, err := e.Scan(ctx, scanConfig, ctr); err != nil {
 			return ctr, err

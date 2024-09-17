@@ -96,6 +96,14 @@ type Version struct {
 	Dev string
 }
 
+// Values to inject version information into a go build
+func (v Version) GoValues() []string {
+	return []string{
+		"github.com/dagger/dagger/engine.Version=" + v.Version(),
+		"github.com/dagger/dagger/engine.Tag=" + v.Tag,
+	}
+}
+
 var commitRegexp = regexp.MustCompile("^[0-9a-f]{40}$")
 
 // Complete version string
