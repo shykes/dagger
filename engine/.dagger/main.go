@@ -19,10 +19,8 @@ const (
 	DistroWolfi  = "wolfi"
 	DistroUbuntu = "ubuntu"
 	ubuntuVersion   = "22.04"
-	runcVersion     = "v1.1.12"
 	cniVersion      = "v1.5.0"
 	qemuBinImage    = "tonistiigi/binfmt@sha256:e06789462ac7e2e096b53bfd9e607412426850227afeb1d0f5dfa48a731e0ba5"
-	dumbInitVersion = "v1.2.5"
 )
 
 func New(
@@ -103,8 +101,8 @@ type Engine struct {
 }
 
 // Build one of the binaries involved in the engine build
-func (e *Engine) Binary(name string) *dagger.File {
-	return e.Gomod.Binary("./cmd/" + name, dagger.GoBinaryOpts{
+func (e *Engine) Binary(package string) *dagger.File {
+	return e.Gomod.Binary(package, dagger.GoBinaryOpts{
 		Platform: e.Platform,
 		NoSymbols: true,
 		NoDwarf: true,
@@ -304,14 +302,17 @@ func (e *Engine) Container(
 		return nil, err
 	}
 	ctr = ctr.
-		WithFile("/usr/local/bin/dagger-engine", e.Binary("engine")).
-		WithFile("/usr/bin/dial-stdio", e.Binary("dialstdio")).
-		WithFile("/opt/cni/bin/dnsname", e.Binary("dnsname")).
+		WithFile("/usr/local/bin/dagger-engine", e.Binary("./cmd/engine")).
+		WithFile("/usr/bin/dial-stdio", e.Binary("./cmd/dialstdio")).
+		WithFile("/opt/cni/bin/dnsname", e.Binary("./cmd/dnsname")).
+		WithFile("/usr/bin/dial-stdio", e.Binary("./cmd/dialstdio")).
 		WithFile("/usr/local/bin/runc", dag.Runc(dagger.RuncOpts{
 			Platform: e.Platform,
-		}).Binary())
-	// TODO: build dial-stdio binary
-	// TODO: build dumb-init binary
+		}).Binary()).
+		WithFile("/usr/local/bin/dumb-init", dag.DumbInit(dagger.DumbInitOpts{
+			Platform: e.Platform,
+		})).
+
 	// TODO: build qemu binaries
 	// TODO: build cni plugins
 	// TODO: get builtin SDK contents

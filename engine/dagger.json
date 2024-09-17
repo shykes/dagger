@@ -3,8 +3,8 @@
   "sdk": "go",
   "dependencies": [
     {
-      "name": "runc",
-      "source": "runc"
+      "name": "dumb-init",
+      "source": "dumb-init"
     },
     {
       "name": "codegen",
@@ -21,6 +21,10 @@
     {
       "name": "go",
       "source": "../modules/go"
+    },
+    {
+      "name": "runc",
+      "source": "runc"
     },
     {
       "name": "supermod",
