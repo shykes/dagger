@@ -52,7 +52,7 @@ func New(
 
 	// Enable CGO
 	// +optional
-	Cgo bool,
+	cgo bool,
 
 	// Enable race detector. Implies cgo=true
 	// +optional
@@ -95,7 +95,7 @@ func New(
 		Sidecar:     sidecar,
 		Ldflags:     ldflags,
 		Values:      values,
-		Cgo:         Cgo,
+		Cgo:         cgo,
 		Race:        race,
 	}
 }
