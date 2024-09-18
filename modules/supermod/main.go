@@ -16,7 +16,7 @@ func New(
 		contextDir = dag.Directory()
 	}
 	return Supermod{
-		ContextDir: contextDir,
+		ContextDir: dag.Directory().WithDirectory("/src", contextDir),
 		Path:       path,
 	}
 }
@@ -32,6 +32,44 @@ func (m Supermod) Config() *dagger.File {
 type Supermod struct {
 	ContextDir *dagger.Directory
 	Path       string
+}
+
+func (m Supermod) Check(
+	ctx context.Context,
+) string {
+	mod := m.Load()
+	// is this the best way to see if `dagger functions` would pass?
+	_, err := mod.Name(ctx)
+	// _, err := mod.Objects(ctx)
+
+	if err != nil {
+		return m.Path + ": failed\n"
+	}
+	return m.Path + ": passed\n"
+}
+
+func (m Supermod) CheckAll(
+	ctx context.Context,
+	// +optional
+	exclude []string,
+) (string, error) {
+	// m, err := m.DevelopAll(ctx, exclude)
+	// if err != nil {
+	// 	return "", err
+	// }
+
+	out := "Modules:\n"
+	out += m.Check(ctx)
+
+	submodules, err := m.Submodules(ctx, exclude)
+	if err != nil {
+		return "", err
+	}
+	for _, submodule := range submodules {
+		out += submodule.Check(ctx)
+	}
+
+	return out, nil
 }
 
 func (m Supermod) Develop() Supermod {
