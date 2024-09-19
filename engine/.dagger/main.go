@@ -62,7 +62,7 @@ func New(
 	// Choose a flavor of base image
 	// +optional
 	// +default="alpine"
-	image Distro,
+	distro Distro,
 	// Go version to use when building the engine
 	// +optional
 	// +default="1.23.0"
@@ -101,7 +101,7 @@ func New(
 		DockerConfig: dockerConfig,
 		GPU:          gpu,
 		Platform:     platform,
-		Image:        image,
+		Distro:       distro,
 		GoVersion:    goVersion,
 		Tag:          tag,
 	}, nil
@@ -123,7 +123,7 @@ type Engine struct {
 	DockerConfig *dagger.Secret  // +private
 	GPU          bool            // +private
 	Platform     dagger.Platform // +private
-	Image        Distro          // +private
+	Distro       Distro          // +private
 	GoVersion    string          // +private
 }
 
@@ -341,10 +341,10 @@ func (e *Engine) Lint(
 
 // Build the base image for the engine, based on configured flavor
 func (e *Engine) Base() *dagger.Container {
-	if e.Image == DistroUbuntu {
+	if e.Distro == DistroUbuntu {
 		return e.ubuntuBase()
 	}
-	if e.Image == DistroWolfi {
+	if e.Distro == DistroWolfi {
 		return e.wolfiBase()
 	}
 	// Alpine is the default
@@ -480,7 +480,7 @@ func (e *Engine) gomod() *dagger.Go {
 
 // Build a base image for go builds (distro-specific)
 func (e *Engine) GoBase() *dagger.Container {
-	if e.Image == "ubuntu" {
+	if e.Distro == "ubuntu" {
 		// This is a base for a build environment,
 		// not to be confused with the base image of the engine
 		// TODO: there's no guarantee the bullseye libc is compatible with the ubuntu image w/ rebase this onto
@@ -489,7 +489,7 @@ func (e *Engine) GoBase() *dagger.Container {
 			WithExec([]string{"apt-get", "update"}).
 			WithExec([]string{"apt-get", "install", "-y", "git", "build-essential"})
 	}
-	if e.Image == "wolfi" {
+	if e.Distro == "wolfi" {
 		// FIXME: use
 		return dag.Container().
 			From("cgr.dev/chainguard/wolfi-base").
