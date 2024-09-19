@@ -26,7 +26,7 @@ type CniPlugins struct {
 }
 
 // Build the CNI plugins needed by the Dagger Engine
-// We build the plugins from source toenable upgrades to Go and other dependencies that
+// We build the plugins from source to enable upgrades to Go and other dependencies that
 // can contain CVEs in the builds on github releases
 func (cni CniPlugins) Build() *dagger.Directory {
 	src := dag.Git("github.com/containernetworking/plugins").Tag(cni.Version).Tree()

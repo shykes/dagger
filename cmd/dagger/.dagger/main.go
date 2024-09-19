@@ -22,17 +22,25 @@ func New(
 	// Git commit to use in version string
 	// +optional
 	commit string,
+	// Base image for go build environment
+	// +optional
+	base *dagger.Container,
 ) (*DaggerCli, error) {
-	values, err := dag.Version(dagger.VersionOpts{
+	version, err := dag.Version(dagger.VersionOpts{
 		Commit: commit,
 		Tag:    tag,
-	}).GoValues(ctx)
+	}).Version(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return &DaggerCli{
 		Gomod: dag.Go(source, dagger.GoOpts{
-			Values: values,
+			Base: base,
+			Values: []string{
+				// FIXME: how to avoid duplication with engine module?
+				"github.com/dagger/dagger/engine.Version=" + version,
+				"github.com/dagger/dagger/engine.Tag=" + tag,
+			},
 		}),
 	}, nil
 }
@@ -71,12 +79,6 @@ func (cli DaggerCli) Binary(
 func (cli DaggerCli) Reference(
 	ctx context.Context,
 	// +optional
-	// +defaultPath="/"
-	// +ignore_0.13=["!/cmd/dagger/*", "!**/go.sum", "!**/go.mod", "!**/*.go", "!.git", ".git/objects/*", "!.changes"]
-	// stopgap:
-	// +ignore=["bin", "**/node_modules", "**/.venv", "**/__pycache__"]
-	source *dagger.Directory,
-	// +optional
 	frontmatter string,
 	// +optional
 	// Include experimental commands
@@ -89,7 +91,7 @@ func (cli DaggerCli) Reference(
 	if frontmatter != "" {
 		cmd = append(cmd, "--frontmatter", frontmatter)
 	}
-	return dag.Go(source).
+	return cli.Gomod.
 		Env().
 		WithExec(cmd).
 		File("cli.mdx")

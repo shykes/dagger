@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"dagger/engine/internal/dagger"
 
+	"github.com/containerd/platforms"
 	"github.com/dagger/dagger/engine/distconsts"
-	"google.golang.org/grpc/internal/resolver/passthrough"
 
 	"github.com/moby/buildkit/identity"
 	"golang.org/x/sync/errgroup"
@@ -16,12 +17,12 @@ import (
 type Distro string
 
 const (
-	DistroAlpine = "alpine"
-	DistroWolfi  = "wolfi"
-	DistroUbuntu = "ubuntu"
-	ubuntuVersion   = "22.04"
-	cniVersion      = "v1.5.0"
-	qemuBinImage    = "tonistiigi/binfmt@sha256:e06789462ac7e2e096b53bfd9e607412426850227afeb1d0f5dfa48a731e0ba5"
+	DistroAlpine  = "alpine"
+	DistroWolfi   = "wolfi"
+	DistroUbuntu  = "ubuntu"
+	ubuntuVersion = "22.04"
+	cniVersion    = "v1.5.0"
+	qemuBinImage  = "tonistiigi/binfmt@sha256:e06789462ac7e2e096b53bfd9e607412426850227afeb1d0f5dfa48a731e0ba5"
 )
 
 func New(
@@ -80,55 +81,64 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	cli := dag.DaggerCli(dagger.DaggerCliOpts{
+		Tag:    tag,
+		Commit: commit,
+	}).Binary(dagger.DaggerCliBinaryOpts{
+		Platform: platform,
+	})
 	// FIXME: load go base image, to pass to gomod
 	// OR change gomod to being lazy
 	return &Engine{
-		Version: version,
-		Source: source,
+		Cli:          cli,
+		Version:      version,
+		Source:       source,
 		Config:       config,
 		Args:         args,
+		Race:         race,
 		Trace:        trace,
 		InstanceName: instanceName,
 		DockerConfig: dockerConfig,
 		GPU:          gpu,
 		Platform:     platform,
 		Image:        image,
-		GoVersion: goVersion,
+		GoVersion:    goVersion,
+		Tag:          tag,
 	}, nil
 }
 
 type Engine struct {
-	Args   []string   // +private
-	Config []string   // +private
-	Gomod  *dagger.Go // +private
+	Cli     *dagger.File      // +private
+	Source  *dagger.Directory // +private
+	Version string            // +private
+	Tag     string            // +private
+	Args    []string          // +private
+	Config  []string          // +private
+	Gomod   *dagger.Go        // +private
 
+	Race  bool // +private
 	Trace bool // +private
 
 	InstanceName string          // +private
 	DockerConfig *dagger.Secret  // +private
 	GPU          bool            // +private
 	Platform     dagger.Platform // +private
-	Image        Distro         // +private
-	GoVersion string // +private
+	Image        Distro          // +private
+	GoVersion    string          // +private
 }
 
 // Build one of the binaries involved in the engine build
 func (e *Engine) Binary(pkg string) *dagger.File {
 	return e.Gomod.Binary(pkg, dagger.GoBinaryOpts{
-		Platform: e.Platform,
+		Platform:  e.Platform,
 		NoSymbols: true,
-		NoDwarf: true,
+		NoDwarf:   true,
 	})
 }
 
 // An environment to build this engine
 func (e *Engine) Env() *dagger.Container {
 	return e.Gomod.Env()
-	return dag.Go(source, dagger.GoOpts{
-		// Probably not needed with a custom base, but keep just in case
-		Version: e.GoVersion,
-		Base: base,
-	})
 }
 
 // Run engine tests
@@ -180,7 +190,6 @@ func (e *Engine) Tests(
 	})
 }
 
-
 // Build the engine container
 func (e *Engine) Container(
 	ctx context.Context,
@@ -223,7 +232,7 @@ func (e *Engine) Container(
 			Platform: e.Platform,
 		}).Binaries()).
 		WithDirectory("/opt/cni/bin/", dag.CniPlugins(dagger.CniPluginsOpts{
-			e.Platform: e.Platform,
+			Base: e.GoBase(),
 		}).Build()).
 		WithExec([]string{"ln", "-s", "/usr/bin/dial-stdio", "/usr/bin/buildctl"}).
 		WithDirectory(distconsts.EngineDefaultStateDir, dag.Directory()).
@@ -233,13 +242,7 @@ func (e *Engine) Container(
 		WithFile("/usr/local/bin/dagger-entrypoint.sh", entrypoint).
 		WithEntrypoint([]string{"dagger-entrypoint.sh"}).
 		// Add dagger CLI
-		WithFile(
-			"/usr/local/bin/dagger",
-			dag.DaggerCli().Binary(dagger.DaggerCliBinaryOpts{
-				Platform: e.Platform,
-				Version:  e.Version,
-				Tag:      e.Tag,
-			})).
+		WithFile("/usr/local/bin/dagger", e.Cli).
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "unix:///var/run/buildkit/buildkitd.sock").
 		// Additional settings for a dev engine
 		With(func(c *dagger.Container) *dagger.Container {
@@ -285,11 +288,7 @@ func (e *Engine) Bind(ctx context.Context, client *dagger.Container) *dagger.Con
 			return c.WithServiceBinding("dagger-engine", ectr.AsService())
 		}).
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "tcp://dagger-engine:1234").
-		WithMountedFile("/.dagger-cli", dag.DaggerCli().Binary(dagger.DaggerCliBinaryOpts{
-			Platform: e.Platform,
-			Version:  e.Version,
-			Tag:      e.Tag,
-		})).
+		WithMountedFile("/.dagger-cli", e.Cli).
 		WithEnvVariable("_EXPERIMENTAL_DAGGER_CLI_BIN", "/.dagger-cli").
 		WithExec([]string{"ln", "-s", "/.dagger-cli", "/usr/local/bin/dagger"}).
 		With(func(c *dagger.Container) *dagger.Container {
@@ -342,22 +341,20 @@ func (e *Engine) Lint(
 
 // Build the base image for the engine, based on configured flavor
 func (e *Engine) Base() *dagger.Container {
-	switch e.Image {
-		case DistroUbuntu:
-			return ubuntuBase()
-		case DistroWolfi:
-			return wolfiBase()
-		case DistroAlpine:
-			passthrough
-		default:
-			return alpineBase()
+	if e.Image == DistroUbuntu {
+		return e.ubuntuBase()
 	}
+	if e.Image == DistroWolfi {
+		return e.wolfiBase()
+	}
+	// Alpine is the default
+	return e.alpineBase()
 }
 
 func (e *Engine) wolfiBase() *dagger.Container {
 	// FIXME: use wolfi module
 	return dag.
-		Container(dagger.ContainerOpts{Platform: build.platform}).
+		Container(dagger.ContainerOpts{Platform: e.Platform}).
 		From("cgr.dev/chainguard/wolfi-base").
 		// NOTE: wrapping the apk installs with this time based env ensures that the cache is invalidated
 		// once-per day. This is a very unfortunate workaround for the poor caching "apk add" as an exec
@@ -477,37 +474,33 @@ func (e *Engine) gomod() *dagger.Go {
 		Values: []string{
 			"github.com/dagger/dagger/engine.Version=" + e.Version,
 			"github.com/dagger/dagger/engine.Tag=" + e.Tag,
-		}
+		},
 	})
 }
 
 // Build a base image for go builds (distro-specific)
 func (e *Engine) GoBase() *dagger.Container {
-	switch e.Image {
+	if e.Image == "ubuntu" {
 		// This is a base for a build environment,
 		// not to be confused with the base image of the engine
-		case "ubuntu", default:
-			// TODO: there's no guarantee the bullseye libc is compatible with the ubuntu image w/ rebase this onto
-			return dag.Container().
-				From(fmt.Sprintf("golang:%s-bullseye", e.GoVersion)).
-				WithExec([]string{"apt-get", "update"}).
-				WithExec([]string{"apt-get", "install", "-y", "git", "build-essential"})
-		case "wolfi":
-			// FIXME: use
-			return dag.Container().
-					From("cgr.dev/chainguard/wolfi-base").
-					WithExec([]string{"apk", "add", "build-base", "git"}).
-					WithExec([]string{"apk", "add", "go-" + e.GoVersion})
-		case "alpine":
-			fallthrough
-		default:
-			return dag.Container().
-				From("golang:" + e.GoVersion + "-alpine").
-				WithExec([]string{"apk", "add", "build-base", "git"})
+		// TODO: there's no guarantee the bullseye libc is compatible with the ubuntu image w/ rebase this onto
+		return dag.Container().
+			From(fmt.Sprintf("golang:%s-bullseye", e.GoVersion)).
+			WithExec([]string{"apt-get", "update"}).
+			WithExec([]string{"apt-get", "install", "-y", "git", "build-essential"})
 	}
+	if e.Image == "wolfi" {
+		// FIXME: use
+		return dag.Container().
+			From("cgr.dev/chainguard/wolfi-base").
+			WithExec([]string{"apk", "add", "build-base", "git"}).
+			WithExec([]string{"apk", "add", "go-" + e.GoVersion})
+	}
+	// alpine is the default
+	return dag.Container().
+		From("golang:" + e.GoVersion + "-alpine").
+		WithExec([]string{"apk", "add", "build-base", "git"})
 }
-
-
 
 // Generate any engine-related files
 // Note: this is codegen of the 'go generate' variety, not 'dagger develop'
