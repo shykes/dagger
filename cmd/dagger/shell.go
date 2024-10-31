@@ -473,9 +473,53 @@ func (h *shellCallHandler) entrypointCall(ctx context.Context, args []string) (*
 		return &ShellState{}, nil
 	}
 
-	// TODO: 3. Dependency short name (eg. 'wolfi container')
+	// 3. Dependency short name (eg. 'wolfi container')
+	if len(args) > 1 {
+		dep, err := h.loadDependency(ctx, args[0])
+		if err != nil {
+			return nil, err
+		}
+
+		// Get the module definition for the dependency
+		depMod, err := loadModuleDef(ctx, dep)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load module definition for dependency %q: %w", args[0], err)
+		}
+
+		// Check if the dependency has the function
+		if depMod.HasFunction(args[1]) {
+			fn := depMod.MainObject.AsObject.Constructor
+			expected := len(fn.RequiredArgs())
+			actual := 0 // We don't have a config for dependencies, so assume 0
+
+			if expected > actual {
+				return nil, fmt.Errorf(`missing %d required argument(s) for the dependency module. Use ".config [options]" to set them`, expected-actual)
+			}
+
+			return ShellState{}.WithCall(fn, make(map[string]any)), nil
+		}
+	}
 
 	return nil, fmt.Errorf("there is no module or core function %q", args[0])
+}
+
+// Load a dependency from the current module using h.mod.Source.AsModule().Dependencies()
+func (h *shellCallHandler) loadDependency(ctx context.Context, name string) (*dagger.Module, error) {
+	deps, err := h.mod.Source.AsModule().Dependencies(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load dependencies: %w", err)
+	}
+	for _, dep := range deps {
+		depName, err := dep.Name(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get dependency name: %w", err)
+		}
+
+		if depName == name {
+			return &dep, nil
+		}
+	}
+	return nil, fmt.Errorf("dependency %q not found", name)
 }
 
 // functionCall is executed for every command that the exec handler processes
