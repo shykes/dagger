@@ -751,7 +751,7 @@ func (c *Client) shutdownServer() error {
 	// canceled
 	ctx := context.WithoutCancel(c.internalCtx)
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 1000*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "http://dagger"+engine.ShutdownEndpoint, nil)
