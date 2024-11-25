@@ -1063,7 +1063,15 @@ func cacheConfigFromEnv(envName string) ([]*controlapi.CacheOptionsEntry, error)
 	return cacheConfigs, nil
 }
 
+func loadCacheMoneyConfig() error {
+
+}
+
 func allCacheConfigsFromEnv() (cacheImportConfigs []*controlapi.CacheOptionsEntry, cacheExportConfigs []*controlapi.CacheOptionsEntry, rerr error) {
+	if err := loadCacheMoneyConfig(); err != nil {
+		return nil, nil, fmt.Errorf("load cachemoney config: %w", err)
+	}
+
 	// cache import only configs
 	cacheImportConfigs, err := cacheConfigFromEnv(cacheImportsConfigEnvName)
 	if err != nil {

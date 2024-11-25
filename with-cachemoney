@@ -1,0 +1,51 @@
+#!/bin/bash
+
+USAGE='Usage: $0 <NAMESPACE> <COMMAND...>'
+NAMESPACE=${1:?$USAGE}
+shift
+
+REGION=us-west-2
+PREFIX=cachemoney
+MANIFESTS_PREFIX=${NAMESPACE}/
+BUCKET=cachemoney.hykes.org
+AWS_ACCESS_KEY_ID=$(op read "op://Private/uq7vbdagm6sqtdb7cdvzulf2r4/access key id")
+AWS_SECRET_ACCESS_KEY=$(op read "op://Private/uq7vbdagm6sqtdb7cdvzulf2r4/secret access key")
+
+#
+# Cache import configuration
+#
+
+CACHE_FROM=$(cat <<EOF | tr '\n' ',' | sed 's/,$//'
+type=s3
+region=$REGION
+bucket=$BUCKET
+manifests_prefix=$MANIFESTS_PREFIX
+prefix=${PREFIX}
+access_key_id=$AWS_ACCESS_KEY_ID
+secret_access_key=$AWS_SECRET_ACCESS_KEY
+EOF
+)
+
+#
+# Cache export configuration
+#
+
+CACHE_TO="${CACHE_FROM},mode=max"
+
+# Call this to make authenticated calls to the aws S3 API from here
+aws() {
+    AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
+    AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
+    AWS_DEFAULT_REGION=$REGION \
+    aws $@
+}
+
+if [ "$1 $2 $3" = "docker buildx build" ]; then
+    echo "Injecting docker-specific cache config flags"
+    shift 3
+    exec docker buildx build --cache-from="$CACHE_FROM" --cache-to="$CACHE_TO" $@
+else
+    export _EXPERIMENTAL_DAGGER_CACHE_IMPORT_CONFIG=$CACHE_FROM
+    export _EXPERIMENTAL_DAGGER_CACHE_EXPORT_CONFIG=$CACHE_TO
+    exec $@
+fi
