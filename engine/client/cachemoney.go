@@ -87,6 +87,7 @@ func cacheMoneySource(name string) (*controlapi.CacheOptionsEntry, error) {
 			"bucket":            bucket,
 			"access_key_id":     id,
 			"secret_access_key": key,
+			"compression":       "zstd",
 		},
 	}, nil
 }
