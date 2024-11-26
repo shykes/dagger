@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -1064,14 +1065,48 @@ func cacheConfigFromEnv(envName string) ([]*controlapi.CacheOptionsEntry, error)
 }
 
 func loadCacheMoneyConfig() error {
-
+	prefix := os.Getenv("CACHEMONEY_NAMESPACE")
+	if prefix == "" {
+		return nil
+	}
+	// Load standard AWS config
+	if region := os.Getenv("AWS_DEFAULT_REGION"); region == "" {
+		region = "us-west-2"
+	}
+	if id := os.Getenv("AWS_ACCESS_KEY_ID"); id != "" {
+		if strings.HasPrefix(id, "op://") {
+			output, err := exec.Command("op", "read", id).Output()
+			if err != nil {
+				return fmt.Errorf("failed to execute 1password CLI: %w", err)
+			}
+			id = strings.TrimSpace(string(output))
+		}
+	} else {
+		return fmt.Errorf("AWS_ACCESS_KEY_ID is not set")
+	}
+	if key := os.Getenv("AWS_SECRET_ACCESS_KEY"); key != "" {
+		if strings.HasPrefix(key, "op://") {
+			output, err := exec.Command("op", "read", key).Output()
+			if err != nil {
+				return fmt.Errorf("failed to execute 1password CLI: %w", err)
+			}
+			key = strings.TrimSpace(string(output))
+		}
+	} else {
+		return fmt.Errorf("AWS_SECRET_ACCESS_KEY is not set")
+	}
+	cacheFrom := strings.Join([]string{
+		"type=s3",
+		"region=" + region,
+		"manifests_prefix=" + prefix + "/",
+		"bucket":
+	})
 }
 
 func allCacheConfigsFromEnv() (cacheImportConfigs []*controlapi.CacheOptionsEntry, cacheExportConfigs []*controlapi.CacheOptionsEntry, rerr error) {
 	if err := loadCacheMoneyConfig(); err != nil {
 		return nil, nil, fmt.Errorf("load cachemoney config: %w", err)
 	}
-
 	// cache import only configs
 	cacheImportConfigs, err := cacheConfigFromEnv(cacheImportsConfigEnvName)
 	if err != nil {
