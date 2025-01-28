@@ -32,27 +32,50 @@ func (s agentSchema) Install() {
 // For each object type <Foo>, we inject <Foo>Agent, a wrapper type that adds agent-like methods
 // Essentially transforming every Dagger object into a LLM-powered robot
 func (s agentSchema) InstallObject(selfType dagql.ObjectType, install func(dagql.ObjectType)) {
-	slog.Info("[AGENT] middleware installObject(%s)", selfType.Typed().Type().Name())
+	slog.Info("[AGENT] middleware installObject", "selfType", selfType, "selfType-name", selfType.TypeName())
 	// Install the target type first, so we can reference it in our wrapper type
+	selfType.Extend(
+		dagql.FieldSpec{
+			Name: "prompt",
+			Type: dagql.String(""),
+			Args: []dagql.InputSpec{
+				{
+					Name: "prompt",
+					Type: dagql.String(""),
+				},
+			},
+		},
+		func(ctx context.Context, self dagql.Object, args map[string]dagql.Input) (dagql.Typed, error) {
+			return dagql.NewString("prompt: hello world!"), nil
+		},
+	)
 	install(selfType)
 	// Create the wrapper type
-	class := dagql.NewClass[*core.Agent](dagql.ClassOpts[*core.Agent]{
-		// Instantiate a throwaway agent instance from the type
-		Typed: core.NewAgent(s.srv, core.LlmConfig{}, nil, selfType),
-	})
-	class.Install(
-		dagql.Func("withPrompt", s.withPrompt).
-			Doc("add a prompt to the agent context").
-			ArgDoc("prompt", "The prompt. Example: \"make me a sandwich\""),
-		dagql.Func("run", s.run).
-			Doc("run the agent"),
-		dagql.Func("history", s.history).
-			Doc("return the agent history: user prompts, agent replies, and tool calls"),
-		dagql.Func("as"+selfType.TypeName(), s.asObject).
-			Doc("convert the agent back to a "+selfType.TypeName()),
-	)
+	// class := dagql.NewClass[*core.Agent](dagql.ClassOpts[*core.Agent]{
+	// 	// Instantiate a throwaway agent instance from the type
+	// 	Typed: core.NewAgent(s.srv, core.LlmConfig{}, nil, selfType),
+	// })
+	dagql.Fields[*core.Query]{
+		dagql.Func(
+			selfType.TypeName()+"Agent",
+			func(ctx context.Context, self *core.Query, args interface{}) (dagql.String, error) {
+				return dagql.NewString("This is a " + selfType.TypeName() + "Agent"), nil
+			},
+		),
+	}.Install(s.srv)
+	//class.Install(
+	//	dagql.Func("withPrompt", s.withPrompt).
+	//		Doc("add a prompt to the agent context").
+	//		ArgDoc("prompt", "The prompt. Example: \"make me a sandwich\""),
+	//	dagql.Func("run", s.run).
+	//		Doc("run the agent"),
+	//	dagql.Func("history", s.history).
+	//		Doc("return the agent history: user prompts, agent replies, and tool calls"),
+	//	dagql.Func("as"+selfType.TypeName(), s.asObject).
+	//		Doc("convert the agent back to a "+selfType.TypeName()),
+	//)
 	// Install the wrapper type
-	install(class)
+	//install(class)
 }
 
 func (s agentSchema) llmConfig() core.LlmConfig {

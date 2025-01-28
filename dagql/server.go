@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/dagger/dagger/dagql/call"
+	"github.com/dagger/dagger/engine/slog"
 )
 
 // Server represents a GraphQL server whose schema is dynamically modified at
@@ -213,19 +214,22 @@ type Loadable interface {
 
 // InstallObject installs the given Object type into the schema.
 func (s *Server) InstallObject(class ObjectType) {
-	install := func(o ObjectType) {
-		s.installLock.Lock()
-		s.installObject(class)
-		s.installLock.Unlock()
-	}
-	if middleware := s.middleware; middleware != nil {
-		middleware.InstallObject(class, install)
-	} else {
-		install(class)
-	}
+	s.installObject(class)
 }
 
 func (s *Server) installObject(class ObjectType) {
+	if middleware := s.middleware; middleware != nil {
+		middleware.InstallObject(class, s.installObjectNoMiddleware)
+	} else {
+		s.installObjectNoMiddleware(class)
+	}
+}
+
+func (s *Server) installObjectNoMiddleware(class ObjectType) {
+	slog.Info("installing object type", "typename", class.TypeName())
+	defer slog.Info("object type installed", "typename", class.TypeName())
+	s.installLock.Lock()
+	defer s.installLock.Unlock()
 	s.objects[class.TypeName()] = class
 	if idType, hasID := class.IDType(); hasID {
 		s.scalars[idType.TypeName()] = idType

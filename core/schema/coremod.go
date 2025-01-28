@@ -38,8 +38,8 @@ func (m *CoreMod) View() (string, bool) {
 
 func (m *CoreMod) Install(ctx context.Context, dag *dagql.Server) error {
 	for _, schema := range []SchemaResolvers{
-		&agentSchema{dag}, // install middleware first
 		&querySchema{dag},
+		&agentSchema{dag},
 		&directorySchema{dag},
 		&fileSchema{dag},
 		&gitSchema{dag},
