@@ -13,11 +13,35 @@ import (
 	_ "github.com/dagger/dagger/core/bbi/flat"
 	"github.com/dagger/dagger/dagql"
 	"github.com/joho/godotenv"
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
 	"github.com/vektah/gqlparser/v2/ast"
 	"go.opentelemetry.io/otel/codes"
 )
+
+type LLMProvider string
+
+const (
+	OpenAIProvider    LLMProvider = "openai"
+	AnthropicProvider LLMProvider = "anthropic"
+)
+
+// Message represents a generic message in the LLM conversation
+type Message struct {
+	Role       string      `json:"role"`
+	Content    interface{} `json:"content"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
+}
+
+type ToolCall struct {
+	ID       string   `json:"id"`
+	Function FuncCall `json:"function"`
+	Type     string   `json:"type"`
+}
+
+type FuncCall struct {
+	Arguments string `json:"arguments"`
+	Name      string `json:"name"`
+}
 
 // An instance of a LLM (large language model), with its state and tool calling environment
 type Llm struct {
@@ -26,11 +50,9 @@ type Llm struct {
 	Config *LlmConfig
 
 	// History of messages
-	// FIXME: rename to 'messages'
-	history []openai.ChatCompletionMessageParamUnion
+	history []Message
 	// History of tool calls and their result
 	calls map[string]string
-
 	// LLM state
 	// Can hold typed variables for all the types available in the schema
 	// This state is what gets extended by our graphql middleware
@@ -40,13 +62,27 @@ type Llm struct {
 	// FIXME: Agent.Self moves here
 	// state map[string]dagql.Typed
 	state dagql.Typed
+
+	// LLM client interface
+	client LLMClient
 }
 
 type LlmConfig struct {
-	Model string
-	Key   string
-	Host  string
-	Path  string
+	Provider LLMProvider
+	Model    string
+	Key      string
+	Host     string
+	Path     string
+}
+
+// LLMClient interface defines the methods that each provider must implement
+type LLMClient interface {
+	SendQuery(ctx context.Context, history []Message, tools []bbi.Tool) (*LLMResponse, error)
+}
+
+type LLMResponse struct {
+	Content   string
+	ToolCalls []ToolCall
 }
 
 // FIXME: engine-wide global config
@@ -79,7 +115,9 @@ func loadGlobalLlmConfig(ctx context.Context, srv *dagql.Server) (*LlmConfig, er
 	if globalLlmConfig != nil {
 		return globalLlmConfig, nil
 	}
-	cfg := new(LlmConfig)
+	cfg := &LlmConfig{
+		Provider: OpenAIProvider, // Default to OpenAI
+	}
 	envFile, err := loadSecret("file://.env")
 	if err != nil {
 		return nil, err
@@ -104,8 +142,12 @@ func loadGlobalLlmConfig(ctx context.Context, srv *dagql.Server) (*LlmConfig, er
 	}
 	if model, ok := env["LLM_MODEL"]; ok {
 		cfg.Model = model
+		// Set provider based on model if specified
+		if strings.HasPrefix(model, "claude-") {
+			cfg.Provider = AnthropicProvider
+		}
 	} else {
-		cfg.Model = "gpt-4o"
+		cfg.Model = "gpt-4o" // Default model
 	}
 	if cfg.Key == "" && cfg.Host == "" {
 		return nil, fmt.Errorf("error loading llm configuration: .env must set LLM_KEY or LLM_HOST")
@@ -115,18 +157,30 @@ func loadGlobalLlmConfig(ctx context.Context, srv *dagql.Server) (*LlmConfig, er
 }
 
 func NewLlm(ctx context.Context, query *Query, srv *dagql.Server) (*Llm, error) {
-	// FIXME: make the llm key/host/path/model configurable
 	config, err := loadGlobalLlmConfig(ctx, srv)
 	if err != nil {
 		return nil, err
 	}
-	return &Llm{
+
+	llm := &Llm{
 		Query:  query,
 		Config: config,
 		calls:  make(map[string]string),
 		// FIXME: support multiple variables in state
-		//state:  make(map[string]dagql.Typed),
-	}, nil
+		//state:  make(map[string]dagql.Typed)
+	}
+
+	// Initialize the appropriate client based on provider
+	switch config.Provider {
+	case OpenAIProvider:
+		llm.client = newOpenAIClient(config)
+	case AnthropicProvider:
+		llm.client = newAnthropicClient(config)
+	default:
+		return nil, fmt.Errorf("unsupported LLM provider: %s", config.Provider)
+	}
+
+	return llm, nil
 }
 
 func (*Llm) Type() *ast.Type {
@@ -200,7 +254,10 @@ func (llm *Llm) WithPrompt(ctx context.Context,
 		})
 	}
 	llm = llm.Clone()
-	llm.history = append(llm.history, openai.UserMessage(prompt))
+	llm.history = append(llm.history, Message{
+		Role:    "user",
+		Content: prompt,
+	})
 	if lazy {
 		return llm, nil
 	}
@@ -219,7 +276,10 @@ func (llm *Llm) WithPromptFile(ctx context.Context, file *File, lazy bool, vars 
 // Append a system prompt message to the history
 func (llm *Llm) WithSystemPrompt(prompt string) *Llm {
 	llm = llm.Clone()
-	llm.history = append(llm.history, openai.SystemMessage(prompt))
+	llm.history = append(llm.history, Message{
+		Role:    "system",
+		Content: prompt,
+	})
 	return llm
 }
 
@@ -273,19 +333,21 @@ func (llm *Llm) Sync(
 		if err != nil {
 			return nil, err
 		}
-		reply := res.Choices[0].Message
 		// Add the model reply to the history
-		if reply.Content != "" {
-			_, span := Tracer(ctx).Start(ctx, "🤖💬 "+reply.Content)
+		if res.Content != "" {
+			_, span := Tracer(ctx).Start(ctx, "🤖💬 "+res.Content)
 			span.End()
 		}
-		llm.history = append(llm.history, reply)
+		llm.history = append(llm.history, Message{
+			Role:      "assistant",
+			Content:   res.Content,
+			ToolCalls: res.ToolCalls,
+		})
 		// Handle tool calls
-		calls := res.Choices[0].Message.ToolCalls
-		if len(calls) == 0 {
+		if len(res.ToolCalls) == 0 {
 			break
 		}
-		for _, call := range calls {
+		for _, call := range res.ToolCalls {
 			for _, tool := range tools {
 				if tool.Name == call.Function.Name {
 					var args interface{}
@@ -320,7 +382,10 @@ func (llm *Llm) Sync(
 						_, span := Tracer(ctx).Start(ctx, fmt.Sprintf("💻 %s", result))
 						span.End()
 						llm.calls[call.ID] = result
-						llm.history = append(llm.history, openai.ToolMessage(call.ID, result))
+						llm.history = append(llm.history, Message{
+							Role:    "assistant",
+							Content: result,
+						})
 					}()
 				}
 			}
@@ -363,13 +428,13 @@ func (llm *Llm) History() ([]string, error) {
 	return history, nil
 }
 
-func (llm *Llm) messages() ([]openAIMessage, error) {
+func (llm *Llm) messages() ([]Message, error) {
 	// FIXME: ugly hack
 	data, err := json.Marshal(llm.history)
 	if err != nil {
 		return nil, err
 	}
-	var messages []openAIMessage
+	var messages []Message
 	if err := json.Unmarshal(data, &messages); err != nil {
 		return nil, err
 	}
@@ -390,96 +455,18 @@ func (llm *Llm) State(ctx context.Context) (dagql.Typed, error) {
 	return llm.state, nil
 }
 
-func (llm *Llm) sendQuery(ctx context.Context, tools []bbi.Tool) (res *openai.ChatCompletion, rerr error) {
+func (llm *Llm) sendQuery(ctx context.Context, tools []bbi.Tool) (*LLMResponse, error) {
 	ctx, span := Tracer(ctx).Start(ctx, "[🤖] 💭")
+	var err error
 	defer func() {
-		if rerr != nil {
-			span.SetStatus(codes.Error, rerr.Error())
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
 		}
 		span.End()
 	}()
-	params := openai.ChatCompletionNewParams{
-		Seed:     openai.Int(0),
-		Model:    openai.F(openai.ChatModel(llm.Config.Model)),
-		Messages: openai.F(llm.history),
-	}
-	if len(tools) > 0 {
-		var toolParams []openai.ChatCompletionToolParam
-		for _, tool := range tools {
-			toolParams = append(toolParams, openai.ChatCompletionToolParam{
-				Type: openai.F(openai.ChatCompletionToolTypeFunction),
-				Function: openai.F(openai.FunctionDefinitionParam{
-					Name:        openai.String(tool.Name),
-					Description: openai.String(tool.Description),
-					Parameters:  openai.F(openai.FunctionParameters(tool.Schema)),
-				}),
-			})
-		}
-		params.Tools = openai.F(toolParams)
-	}
-	return llm.client().Chat.Completions.New(ctx, params)
-}
 
-// Create a new openai client
-func (llm *Llm) client() *openai.Client {
-	var opts []option.RequestOption
-	opts = append(opts, option.WithHeader("Content-Type", "application/json"))
-	if llm.Config.Key != "" {
-		opts = append(opts, option.WithAPIKey(llm.Config.Key))
-	}
-	if llm.Config.Host != "" || llm.Config.Path != "" {
-		var base url.URL
-		base.Scheme = "https"
-		base.Host = llm.Config.Host
-		base.Path = llm.Config.Path
-		opts = append(opts, option.WithBaseURL(base.String()))
-	}
-	return openai.NewClient(opts...)
-}
-
-type openAIMessage struct {
-	Role       string      `json:"role", required`
-	Content    interface{} `json:"content", required`
-	ToolCallID string      `json:"tool_call_id"`
-	ToolCalls  []struct {
-		// The ID of the tool call.
-		ID string `json:"id"`
-		// The function that the model called.
-		Function struct {
-			Arguments string `json:"arguments"`
-			// The name of the function to call.
-			Name string `json:"name"`
-		} `json:"function"`
-		// The type of the tool. Currently, only `function` is supported.
-		Type openai.ChatCompletionMessageToolCallType `json:"type"`
-	} `json:"tool_calls"`
-}
-
-func (msg openAIMessage) Text() (string, error) {
-	contentJson, err := json.Marshal(msg.Content)
-	if err != nil {
-		return "", err
-	}
-	switch msg.Role {
-	case "user", "tool":
-		var content []struct {
-			Text string `json:"text", required`
-		}
-		if err := json.Unmarshal(contentJson, &content); err != nil {
-			return "", fmt.Errorf("malformatted user or tool message: %s", err.Error())
-		}
-		if len(content) == 0 {
-			return "", nil
-		}
-		return content[0].Text, nil
-	case "assistant":
-		var content string
-		if err := json.Unmarshal(contentJson, &content); err != nil {
-			return "", fmt.Errorf("malformatted assistant message: %#v", content)
-		}
-		return content, nil
-	}
-	return "", fmt.Errorf("unsupported message role: %s", msg.Role)
+	resp, err := llm.client.SendQuery(ctx, llm.history, tools)
+	return resp, err
 }
 
 type LlmMiddleware struct {
@@ -585,4 +572,19 @@ func (s LlmMiddleware) ModuleWithObject(ctx context.Context, mod *Module, target
 		return nil, err
 	}
 	return mod, nil
+}
+
+// Add this method to the Message type
+func (msg Message) Text() (string, error) {
+	switch v := msg.Content.(type) {
+	case string:
+		return v, nil
+	case []interface{}:
+		if len(v) > 0 {
+			if text, ok := v[0].(map[string]interface{})["text"].(string); ok {
+				return text, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("unable to extract text from message content: %v", msg.Content)
 }
