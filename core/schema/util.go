@@ -104,3 +104,41 @@ func (maxVersion BeforeVersion) Contains(version dagql.View) bool {
 func ptr[T any](v T) *T {
 	return &v
 }
+// SetJSONAtPath sets `value` at `path` (dot-separated) inside the JSON object
+// in `src` and returns the updated JSON.
+// Missing intermediate objects are created as needed.
+package jsonutil
+
+import (
+	"encoding/json"
+	"strings"
+)
+
+func SetJSON(src []byte, path string, value interface{}) ([]byte, error) {
+	if len(src) == 0 {
+		src = []byte("{}")
+	}
+	var root map[string]interface{}
+	if err := json.Unmarshal(src, &root); err != nil {
+		return nil, err
+	}
+
+	keys := strings.Split(path, ".")
+	last := len(keys) - 1
+	node := root
+	for i, k := range keys {
+		if i == last {
+			node[k] = value
+			break
+		}
+		if next, ok := node[k].(map[string]interface{}); ok {
+			node = next
+		} else {
+			newMap := make(map[string]interface{})
+			node[k] = newMap
+			node = newMap
+		}
+	}
+
+	return json.Marshal(root)
+}

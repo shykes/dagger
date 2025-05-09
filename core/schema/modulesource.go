@@ -201,6 +201,7 @@ type moduleSourceArgs struct {
 	DisableFindUp  bool   `default:"false"`
 	AllowNotExists bool   `default:"false"`
 	RequireKind    dagql.Optional[core.ModuleSourceKind]
+	Runtime dagql.Optional[dagql.String]
 }
 
 func (s *moduleSourceSchema) moduleSource(
@@ -467,6 +468,7 @@ func (s *moduleSourceSchema) gitModuleSource(
 	refPin string,
 	// whether to search up the directory tree for a dagger.json file
 	doFindUp bool,
+	runtime dagql.Optional[dagql.String],
 ) (inst dagql.Instance[*core.ModuleSource], err error) {
 	gitRef, modVersion, err := parsed.GetGitRefAndModVersion(ctx, s.dag, refPin)
 	if err != nil {
@@ -532,9 +534,19 @@ func (s *moduleSourceSchema) gitModuleSource(
 			return inst, fmt.Errorf("failed to find-up dagger.json: %w", err)
 		}
 		if !found {
-			return inst, fmt.Errorf("git module source %q does not contain a dagger config file", gitSrc.AsString())
+			if !args.Runtime.Valid {
+				return inst, fmt.Errorf("git module source %q does not contain a dagger config file", gitSrc.AsString())
+			}
+			// No dagger.json, but external runtime specified:
+			// 1. module dir is the original path (no findup)
+			configDir = filepath.Join("/", gitSrc.SourceRootSubpath)
+			configPath = ""
+			// 2. generate dagger.json with runtime injected
+			// --> this happens further down
+		} else {
+			// If there is no dagger.json, we don't use this
+			configPath = filepath.Join(configDir, modules.Filename)
 		}
-		configPath = filepath.Join(configDir, modules.Filename)
 		gitSrc.SourceRootSubpath = strings.TrimPrefix(configDir, "/")
 	}
 	if gitSrc.SourceRootSubpath == "" {
@@ -564,21 +576,36 @@ func (s *moduleSourceSchema) gitModuleSource(
 		}
 	}
 
-	var configContents string
-	err = s.dag.Select(ctx, gitSrc.ContextDirectory, &configContents,
-		dagql.Selector{
-			Field: "file",
-			Args: []dagql.NamedInput{
-				{Name: "path", Value: dagql.String(configPath)},
+	var configContents = "{}"
+	if configPath != "" {
+		// There was a dagger.json: use it the usual way
+		err = s.dag.Select(ctx, gitSrc.ContextDirectory, &configContents,
+			dagql.Selector{
+				Field: "file",
+				Args: []dagql.NamedInput{
+					{Name: "path", Value: dagql.String(configPath)},
+				},
 			},
-		},
-		dagql.Selector{Field: "contents"},
-	)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return inst, fmt.Errorf("git module source %q does not contain a dagger config file", gitSrc.AsString())
+			dagql.Selector{Field: "contents"},
+		)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return inst, fmt.Errorf("git module source %q does not 	contain a dagger config file", gitSrc.AsString())
+			}
+			return inst, fmt.Errorf("failed to load git module dagger 	config: %w", err)
 		}
-		return inst, fmt.Errorf("failed to load git module dagger config: %w", err)
+	} else {
+		cfg, err := SetJSON(configContents, "name", "fixme")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if runtime.Valid {
+		cfg, err := SetJSON(configContents, "sdk.source", runtime.Value.String())
+		if err != nil {
+			return nil, err
+		}
+		configContents = cfg
 	}
 	if err := s.initFromModConfig([]byte(configContents), gitSrc); err != nil {
 		return inst, err
@@ -639,6 +666,7 @@ func (s *moduleSourceSchema) gitModuleSource(
 
 type directoryAsModuleArgs struct {
 	SourceRootPath string `default:"."`
+	Runtime dagql.Optional[dagql.String]
 }
 
 func (s *moduleSourceSchema) directoryAsModule(
@@ -681,6 +709,38 @@ func (s *moduleSourceSchema) directoryAsModuleSource(
 		dirSrc.SourceRootSubpath = "."
 	}
 
+	// FIXME(nevermind): inject external runtime into config here
+	if args.Runtime.Valid {
+
+		path.Base()
+		cfg.SDK.Source = args.Runtime.Value.String()
+		cfg.Name = "runtime" // FIXME
+
+
+		{
+  "name": "dagger-dev",
+  "engineVersion": "v0.18.6",
+  "sdk": {
+    "source": "go"
+  },
+		err = s.dag.Select(ctx, contextDir, &inst,
+			dagql.Selector{
+				Field: "asModuleSource",
+				Args: []dagql.NamedInput{
+					{Name: "sourceRootPath", Value: dagql.String(args.SourceRootPath)},
+				},
+			},
+			dagql.Selector{
+				Field: "asModule",
+			},
+
+
+		 query dagql.Instance[*core.Query], args moduleSourceArgs)
+
+
+		runtime := runtimeInst.Self
+		runtime.As
+	}
 	configPath := filepath.Join(dirSrc.SourceRootSubpath, modules.Filename)
 	var configContents string
 	err = s.dag.Select(ctx, contextDir, &configContents,
@@ -2087,7 +2147,9 @@ func (s *moduleSourceSchema) runModuleDefInSDK(ctx context.Context, src, srcInst
 func (s *moduleSourceSchema) moduleSourceAsModule(
 	ctx context.Context,
 	src dagql.Instance[*core.ModuleSource],
-	args struct{},
+	args struct{
+		Runtime dagql.Optional[core.ModuleSourceID],
+	},
 ) (inst dagql.Instance[*core.Module], err error) {
 	if src.Self.ModuleName == "" {
 		return inst, fmt.Errorf("module name must be set")
@@ -2134,6 +2196,7 @@ func (s *moduleSourceSchema) moduleSourceAsModule(
 	srcInstContentHashed := src.WithDigest(digest.Digest(src.Self.Digest))
 	modName := src.Self.ModuleName
 
+	// FIXME: if external runtime is provided, load that instead of the module's default SDK
 	if src.Self.SDKImpl != nil {
 		mod, err = s.runModuleDefInSDK(ctx, src, srcInstContentHashed, mod)
 		if err != nil {
