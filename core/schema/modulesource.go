@@ -201,7 +201,7 @@ type moduleSourceArgs struct {
 	DisableFindUp  bool   `default:"false"`
 	AllowNotExists bool   `default:"false"`
 	RequireKind    dagql.Optional[core.ModuleSourceKind]
-	Runtime dagql.Optional[dagql.String]
+	Runtime        dagql.Optional[dagql.String]
 }
 
 func (s *moduleSourceSchema) moduleSource(
@@ -224,12 +224,12 @@ func (s *moduleSourceSchema) moduleSource(
 
 	switch parsedRef.Kind {
 	case core.ModuleSourceKindLocal:
-		inst, err = s.localModuleSource(ctx, query, bk, parsedRef.Local.ModPath, !args.DisableFindUp, args.AllowNotExists)
+		inst, err = s.localModuleSource(ctx, query, bk, parsedRef.Local.ModPath, !args.DisableFindUp, args.AllowNotExists, args.Runtime.Value.String())
 		if err != nil {
 			return inst, err
 		}
 	case core.ModuleSourceKindGit:
-		inst, err = s.gitModuleSource(ctx, query, parsedRef.Git, args.RefPin, !args.DisableFindUp)
+		inst, err = s.gitModuleSource(ctx, query, parsedRef.Git, args.RefPin, !args.DisableFindUp, string(args.Runtime.Value.String()))
 		if err != nil {
 			return inst, err
 		}
@@ -258,6 +258,7 @@ func (s *moduleSourceSchema) localModuleSource(
 
 	// if true, tolerate the localPath not existing on the filesystem (for dagger init on directories that don't exist yet)
 	allowNotExists bool,
+	runtime string,
 ) (inst dagql.Instance[*core.ModuleSource], err error) {
 	if localPath == "" {
 		localPath = "."
@@ -316,9 +317,9 @@ func (s *moduleSourceSchema) localModuleSource(
 				switch parsedRef.Kind {
 				case core.ModuleSourceKindLocal:
 					depModPath := filepath.Join(defaultFindUpSourceRootDir, namedDep.Source)
-					return s.localModuleSource(ctx, query, bk, depModPath, false, allowNotExists)
+					return s.localModuleSource(ctx, query, bk, depModPath, false, allowNotExists, runtime)
 				case core.ModuleSourceKindGit:
-					return s.gitModuleSource(ctx, query, parsedRef.Git, namedDep.Pin, false)
+					return s.gitModuleSource(ctx, query, parsedRef.Git, namedDep.Pin, false, runtime)
 				}
 			}
 		}
@@ -468,7 +469,7 @@ func (s *moduleSourceSchema) gitModuleSource(
 	refPin string,
 	// whether to search up the directory tree for a dagger.json file
 	doFindUp bool,
-	runtime dagql.Optional[dagql.String],
+	runtime string,
 ) (inst dagql.Instance[*core.ModuleSource], err error) {
 	gitRef, modVersion, err := parsed.GetGitRefAndModVersion(ctx, s.dag, refPin)
 	if err != nil {
@@ -534,7 +535,7 @@ func (s *moduleSourceSchema) gitModuleSource(
 			return inst, fmt.Errorf("failed to find-up dagger.json: %w", err)
 		}
 		if !found {
-			if !args.Runtime.Valid {
+			if runtime == "" {
 				return inst, fmt.Errorf("git module source %q does not contain a dagger config file", gitSrc.AsString())
 			}
 			// No dagger.json, but external runtime specified:
@@ -595,17 +596,18 @@ func (s *moduleSourceSchema) gitModuleSource(
 			return inst, fmt.Errorf("failed to load git module dagger 	config: %w", err)
 		}
 	} else {
-		cfg, err := SetJSON(configContents, "name", "fixme")
+		cfg, err := SetJSON([]byte(configContents), "name", "fixme")
 		if err != nil {
-			return nil, err
+			return inst, err
 		}
+		configContents = string(cfg)
 	}
-	if runtime.Valid {
-		cfg, err := SetJSON(configContents, "sdk.source", runtime.Value.String())
+	if runtime != "" {
+		cfg, err := SetJSON([]byte(configContents), "sdk.source", runtime)
 		if err != nil {
-			return nil, err
+			return inst, err
 		}
-		configContents = cfg
+		configContents = string(cfg)
 	}
 	if err := s.initFromModConfig([]byte(configContents), gitSrc); err != nil {
 		return inst, err
@@ -666,7 +668,7 @@ func (s *moduleSourceSchema) gitModuleSource(
 
 type directoryAsModuleArgs struct {
 	SourceRootPath string `default:"."`
-	Runtime dagql.Optional[dagql.String]
+	Runtime        dagql.Optional[dagql.String]
 }
 
 func (s *moduleSourceSchema) directoryAsModule(
@@ -2114,8 +2116,8 @@ func (s *moduleSourceSchema) runModuleDefInSDK(ctx context.Context, src, srcInst
 func (s *moduleSourceSchema) moduleSourceAsModule(
 	ctx context.Context,
 	src dagql.Instance[*core.ModuleSource],
-	args struct{
-		Runtime dagql.Optional[core.ModuleSourceID],
+	args struct {
+		Runtime dagql.Optional[core.ModuleSourceID]
 	},
 ) (inst dagql.Instance[*core.Module], err error) {
 	if src.Self.ModuleName == "" {
