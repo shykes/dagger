@@ -32,6 +32,7 @@ var (
 	}
 
 	moduleURL         string
+	runtimeURL        string
 	moduleFlags       = pflag.NewFlagSet("module", pflag.ContinueOnError)
 	allowedLLMModules []string
 
@@ -96,6 +97,7 @@ func getCompatVersion() string {
 
 func init() {
 	moduleFlags.StringVarP(&moduleURL, "mod", "m", "", "Path to the module directory. Either local path or a remote git repo")
+	moduleFlags.StringVarP(&runtimeURL, "runtime", "r", "", "Load modules with a custom runtime")
 	var defaultAllowLLM []string
 	if allowLLMEnv := os.Getenv("DAGGER_ALLOW_LLM"); allowLLMEnv != "" {
 		defaultAllowLLM = strings.Split(allowLLMEnv, ",")
@@ -863,6 +865,7 @@ func optionalModCmdWrapper(
 			dag := engineClient.Dagger()
 			modSrc := dag.ModuleSource(getModuleSourceRefWithDefault(), dagger.ModuleSourceOpts{
 				AllowNotExists: true,
+				Runtime:        runtimeURL,
 			})
 			configExists, err := modSrc.ConfigExists(ctx)
 			if err != nil {
