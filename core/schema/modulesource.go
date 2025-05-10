@@ -45,6 +45,7 @@ func (s *moduleSourceSchema) Install() {
 				dagql.Arg("disableFindUp").Doc(`If true, do not attempt to find dagger.json in a parent directory of the provided path. Only relevant for local module sources.`),
 				dagql.Arg("allowNotExists").Doc(`If true, do not error out if the provided ref string is a local path and does not exist yet. Useful when initializing new modules in directories that don't exist yet.`),
 				dagql.Arg("requireKind").Doc(`If set, error out if the ref string is not of the provided requireKind.`),
+				dagql.Arg("runtime").Doc(`Use an external runtime to load the module`),
 			),
 	}.Install(s.dag)
 
