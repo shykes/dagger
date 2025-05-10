@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"golang.org/x/mod/semver"
 
@@ -104,16 +105,10 @@ func (maxVersion BeforeVersion) Contains(version dagql.View) bool {
 func ptr[T any](v T) *T {
 	return &v
 }
+
 // SetJSONAtPath sets `value` at `path` (dot-separated) inside the JSON object
 // in `src` and returns the updated JSON.
 // Missing intermediate objects are created as needed.
-package jsonutil
-
-import (
-	"encoding/json"
-	"strings"
-)
-
 func SetJSON(src []byte, path string, value interface{}) ([]byte, error) {
 	if len(src) == 0 {
 		src = []byte("{}")

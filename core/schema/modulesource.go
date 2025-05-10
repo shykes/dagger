@@ -708,39 +708,6 @@ func (s *moduleSourceSchema) directoryAsModuleSource(
 	if dirSrc.SourceRootSubpath == "" {
 		dirSrc.SourceRootSubpath = "."
 	}
-
-	// FIXME(nevermind): inject external runtime into config here
-	if args.Runtime.Valid {
-
-		path.Base()
-		cfg.SDK.Source = args.Runtime.Value.String()
-		cfg.Name = "runtime" // FIXME
-
-
-		{
-  "name": "dagger-dev",
-  "engineVersion": "v0.18.6",
-  "sdk": {
-    "source": "go"
-  },
-		err = s.dag.Select(ctx, contextDir, &inst,
-			dagql.Selector{
-				Field: "asModuleSource",
-				Args: []dagql.NamedInput{
-					{Name: "sourceRootPath", Value: dagql.String(args.SourceRootPath)},
-				},
-			},
-			dagql.Selector{
-				Field: "asModule",
-			},
-
-
-		 query dagql.Instance[*core.Query], args moduleSourceArgs)
-
-
-		runtime := runtimeInst.Self
-		runtime.As
-	}
 	configPath := filepath.Join(dirSrc.SourceRootSubpath, modules.Filename)
 	var configContents string
 	err = s.dag.Select(ctx, contextDir, &configContents,
