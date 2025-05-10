@@ -8692,6 +8692,7 @@ type ModuleSourceOpts struct {
 	AllowNotExists bool
 	// If set, error out if the ref string is not of the provided requireKind.
 	RequireKind ModuleSourceKind
+	Runtime string
 }
 
 // Create a new module source instance from a source ref string

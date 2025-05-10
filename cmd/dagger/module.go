@@ -97,7 +97,7 @@ func getCompatVersion() string {
 
 func init() {
 	moduleFlags.StringVarP(&moduleURL, "mod", "m", "", "Path to the module directory. Either local path or a remote git repo")
-	moduleFlags.StringVarP(&runtimeURL, "runtime", "r", "", "Load modules with a custom runtime")
+	moduleFlags.StringVarP(&runtimeURL, "runtime", "", "", "Load modules with a custom runtime")
 	var defaultAllowLLM []string
 	if allowLLMEnv := os.Getenv("DAGGER_ALLOW_LLM"); allowLLMEnv != "" {
 		defaultAllowLLM = strings.Split(allowLLMEnv, ",")
@@ -196,6 +196,7 @@ If --sdk is specified, the given SDK is installed in the module. You can do this
 				AllowNotExists: true,
 				// We can only init local modules
 				RequireKind: dagger.ModuleSourceKindLocalSource,
+				Runtime:     runtimeURL,
 			})
 
 			alreadyExists, err := modSrc.ConfigExists(ctx)
@@ -295,6 +296,7 @@ var moduleInstallCmd = &cobra.Command{
 			modSrc := dag.ModuleSource(getModuleSourceRefWithDefault(), dagger.ModuleSourceOpts{
 				// We can only install dependencies to a local module
 				RequireKind: dagger.ModuleSourceKindLocalSource,
+				Runtime:     runtimeURL,
 			})
 
 			alreadyExists, err := modSrc.ConfigExists(ctx)
@@ -313,6 +315,7 @@ var moduleInstallCmd = &cobra.Command{
 			depRefStr := extraArgs[0]
 			depSrc := dag.ModuleSource(depRefStr, dagger.ModuleSourceOpts{
 				DisableFindUp: true,
+				Runtime:       runtimeURL,
 			})
 
 			origDepName, err := depSrc.ModuleName(ctx)
@@ -404,6 +407,7 @@ var moduleUpdateCmd = &cobra.Command{
 			modSrc := dag.ModuleSource(getModuleSourceRefWithDefault(), dagger.ModuleSourceOpts{
 				// We can only update dependencies on a local module
 				RequireKind: dagger.ModuleSourceKindLocalSource,
+				Runtime:     runtimeURL,
 			})
 
 			alreadyExists, err := modSrc.ConfigExists(ctx)
@@ -450,6 +454,7 @@ var moduleUnInstallCmd = &cobra.Command{
 			modSrc := dag.ModuleSource(getModuleSourceRefWithDefault(), dagger.ModuleSourceOpts{
 				// We can only uninstall dependencies on a local module
 				RequireKind: dagger.ModuleSourceKindLocalSource,
+				Runtime:     runtimeURL,
 			})
 
 			alreadyExists, err := modSrc.ConfigExists(ctx)
@@ -512,6 +517,7 @@ This command is idempotent: you can run it at any time, any number of times. It 
 			modSrc := dag.ModuleSource(modRef, dagger.ModuleSourceOpts{
 				// We can only export updated generated files for a local modules
 				RequireKind: dagger.ModuleSourceKindLocalSource,
+				Runtime:     runtimeURL,
 			})
 
 			contextDirPath, err := modSrc.LocalContextDirectoryPath(ctx)
@@ -697,6 +703,7 @@ forced), to avoid mistakenly depending on uncommitted files.
 			modSrc := dag.ModuleSource(getModuleSourceRefWithDefault(), dagger.ModuleSourceOpts{
 				// can only publish modules that also exist locally for now
 				RequireKind: dagger.ModuleSourceKindLocalSource,
+				Runtime:     runtimeURL,
 			})
 
 			alreadyExists, err := modSrc.ConfigExists(ctx)
