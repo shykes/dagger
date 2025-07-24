@@ -8,6 +8,7 @@ import (
 	"iter"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/iancoleman/strcase"
@@ -201,6 +202,70 @@ func (fn *Function) LookupArg(name string) (*FunctionArg, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (fn *Function) OverrideArg(ctx context.Context, name, prettyValue string) error {
+	// FIXME: compare OriginalName instead?
+	arg, ok := fn.LookupArg(name)
+	if !ok {
+		return fmt.Errorf("function %q has no argument %q", fn.Name, name)
+	}
+	var (
+		newDefault     any
+		newDefaultJSON []byte
+	)
+	switch arg.TypeDef.Kind {
+	case TypeDefKindString:
+		newDefault = prettyValue
+	case TypeDefKindInteger:
+		var err error
+		newDefault, err = strconv.Atoi(prettyValue)
+		if err != nil {
+			return fmt.Errorf("failed to parse integer value %q: %w", prettyValue, err)
+		}
+	case TypeDefKindObject:
+		srv := dagql.CurrentDagqlServer(ctx)
+		// eg. "secret", "gitRef", "directory"...
+		typename := arg.TypeDef.ToType().Name()
+		typename = strings.ToLower(typename[0:1]) + typename[1:]
+		if err := srv.Select(ctx, srv.Root(), &newDefault,
+			dagql.Selector{
+				Field: "address",
+				Args: []dagql.NamedInput{{
+					Name:  "value",
+					Value: dagql.NewString(prettyValue),
+				}},
+			},
+			dagql.Selector{
+				Field: strings.ToLower(typename),
+			},
+			dagql.Selector{
+				Field: "id",
+			},
+		); err != nil {
+			return err
+		}
+	default:
+		// Go straight to JSON
+		if val := []byte(prettyValue); json.Valid(val) {
+			newDefaultJSON = val
+		} else {
+			return fmt.Errorf(
+				"can't override arg of type %q: value is not valid json: %s",
+				arg.TypeDef.ToType().Name(),
+				val,
+			)
+		}
+	}
+	if newDefaultJSON == nil {
+		var err error
+		newDefaultJSON, err = json.Marshal(newDefault)
+		if err != nil {
+			return err
+		}
+	}
+	arg.DefaultValue = newDefaultJSON
+	return nil
 }
 
 type FunctionArg struct {
@@ -766,6 +831,42 @@ func (obj *ObjectTypeDef) IsSubtypeOf(iface *InterfaceTypeDef) bool {
 	}
 
 	return true
+}
+
+func (obj *ObjectTypeDef) OverrideArg(ctx context.Context, funcName, argName, prettyValue string) error {
+	// Empty function name == constructor
+	var fn *Function
+	if funcName == "" {
+		fn = obj.Constructor.Value
+		if fn == nil {
+			return fmt.Errorf("can't override constructor for type %q: no constructor", obj.Name)
+		}
+	} else {
+		var ok bool
+		fn, ok = obj.FunctionByName(funcName)
+		if !ok {
+			return fmt.Errorf("can't override args of function %q for type %q: no such function", funcName, obj.Name)
+		}
+	}
+	return fn.OverrideArg(ctx, argName, prettyValue)
+}
+
+// Return a copy of the object, with the given function updated or appended
+// An empty function name sets the constructor
+func (obj *ObjectTypeDef) WithFunction(name string, fn *Function) *ObjectTypeDef {
+	obj = obj.Clone()
+	if name == "" {
+		obj.Constructor = dagql.NonNull(fn)
+		return obj
+	}
+	for i := range obj.Functions {
+		if obj.Functions[i].Name == fn.Name {
+			obj.Functions[i] = fn
+			return obj
+		}
+	}
+	obj.Functions = append(obj.Functions, fn)
+	return obj
 }
 
 type FieldTypeDef struct {

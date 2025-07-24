@@ -80,6 +80,48 @@ func (mod *Module) GetSource() *ModuleSource {
 	return mod.Source.Self()
 }
 
+// Return a reference to the module's main object
+func (mod *Module) MainObject() (*ObjectTypeDef, bool) {
+	for _, typeDef := range mod.ObjectDefs {
+		if typeDef.AsObject.Valid {
+			objDef := typeDef.AsObject.Value
+			if strings.ToLower(objDef.OriginalName) == strings.ToLower(mod.OriginalName) {
+				return objDef, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func (mod *Module) OverrideArgs(ctx context.Context, funcName string, overrides map[string]string) error {
+	for argName, prettyValue := range overrides {
+		if err := mod.OverrideArg(ctx, funcName, argName, prettyValue); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (mod *Module) OverrideArg(ctx context.Context, funcName, argName, prettyValue string) error {
+	mainObj, ok := mod.MainObject()
+	if !ok {
+		return fmt.Errorf("error overriding args for module %q: can't load main object", mod.Name())
+	}
+	return mainObj.OverrideArg(ctx, funcName, argName, prettyValue)
+}
+
+func (mod *Module) ObjectByName(name string) (*TypeDef, bool) {
+	for _, typeDef := range mod.ObjectDefs {
+		if typeDef.AsObject.Valid {
+			objDef := typeDef.AsObject.Value
+			if objDef.Name == name || objDef.OriginalName == name {
+				return typeDef.Clone(), true
+			}
+		}
+	}
+	return nil, false
+}
+
 func (mod *Module) IDModule() *call.Module {
 	var ref, pin string
 	switch mod.Source.Self().Kind {
@@ -802,6 +844,18 @@ func (mod *Module) WithObject(ctx context.Context, def *TypeDef) (*Module, error
 		}
 	}
 
+	// If the object already exists, insert it
+	if def.AsObject.Valid {
+		for i, d := range mod.ObjectDefs {
+			if !d.AsObject.Valid {
+				continue
+			}
+			if d.AsObject.Value.Name == def.AsObject.Value.Name {
+				mod.ObjectDefs[i] = def
+				return mod, nil
+			}
+		}
+	}
 	mod.ObjectDefs = append(mod.ObjectDefs, def)
 	return mod, nil
 }
