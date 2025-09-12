@@ -27,9 +27,6 @@ type ExecTerminalArgs struct {
 type TerminalArgs struct {
 	ExecTerminalArgs
 
-	// Provide dagger access to the executed command
-	ExperimentalPrivilegedNesting dagql.Optional[dagql.Boolean] `default:"false"`
-
 	// Grant the process all root capabilities
 	InsecureRootCapabilities dagql.Optional[dagql.Boolean] `default:"false"`
 }

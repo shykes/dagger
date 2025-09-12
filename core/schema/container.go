@@ -461,11 +461,10 @@ func (s *containerSchema) Install(srv *dagql.Server) {
 				dagql.Arg("redirectStderr").Doc(
 					`Redirect the command's standard error to a file in the container. Example: "./stderr.txt"`),
 				dagql.Arg("expect").Doc(`Exit codes this command is allowed to exit with without error`),
-				dagql.Arg("experimentalPrivilegedNesting").Doc(
-					`Provides Dagger access to the executed command.`),
+				dagql.Arg("experimentalPrivilegedNesting").Doc(`Enable dagger-in-dagger nesting.`).
+					Deprecated("nesting is no longer experimental, and is enabled by default."),
+				dagql.Arg("noNesting").Doc(`Disable dagger-in-dagger nesting.`),
 				dagql.Arg("expect").Doc(`Exit codes this command is allowed to exit with without error`),
-				dagql.Arg("experimentalPrivilegedNesting").Doc(
-					`Provides Dagger access to the executed command.`),
 				dagql.Arg("insecureRootCapabilities").Doc(
 					`Execute the command with all root capabilities. Like --privileged in Docker`,
 					`DANGER: this grants the command full access to the host system. Only use when 1) you trust the command being executed and 2) you specifically need this level of access.`),
@@ -699,8 +698,8 @@ func (s *containerSchema) Install(srv *dagql.Server) {
 			Doc(`Set the default command to invoke for the container's terminal API.`).
 			Args(
 				dagql.Arg("args").Doc(`The args of the command.`),
-				dagql.Arg("experimentalPrivilegedNesting").Doc(
-					`Provides Dagger access to the executed command.`),
+				dagql.Arg("experimentalPrivilegedNesting").Doc(`Enable dagger-in-dagger nesting.`).
+					Deprecated("nesting is no longer experimental, and is enabled by default."),
 				dagql.Arg("insecureRootCapabilities").Doc(
 					`Execute the command with all root capabilities. This is similar to
 				running a command with "sudo" or executing "docker run" with the
@@ -2590,10 +2589,6 @@ func (s *containerSchema) terminal(
 ) (res dagql.ObjectResult[*core.Container], _ error) {
 	if len(args.Cmd) == 0 {
 		args.Cmd = ctr.Self().DefaultTerminalCmd.Args
-	}
-
-	if !args.ExperimentalPrivilegedNesting.Valid {
-		args.ExperimentalPrivilegedNesting = ctr.Self().DefaultTerminalCmd.ExperimentalPrivilegedNesting
 	}
 
 	if !args.InsecureRootCapabilities.Valid {
