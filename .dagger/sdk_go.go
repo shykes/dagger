@@ -31,14 +31,12 @@ func (t GoSDK) Source() *dagger.Directory {
 }
 
 // Test the Go SDK
-func (t GoSDK) Test(ctx context.Context) (rerr error) {
-	output, err := t.DevContainer().
+// FIXME: merge into common go toolchain
+func (t GoSDK) Test(ctx context.Context) (CheckStatus, error) {
+	_, err := t.DevContainer().
 		WithExec([]string{"go", "test", "-v", "-skip=TestProvision", "./..."}).
-		Stdout(ctx)
-	if err != nil {
-		err = fmt.Errorf("test failed: %w\n%s", err, output)
-	}
-	return err
+		Sync(ctx)
+	return CheckCompleted, err
 }
 
 func (t GoSDK) BaseContainer() *dagger.Container {
@@ -63,11 +61,11 @@ func (t GoSDK) Generate(ctx context.Context) (*dagger.Changeset, error) {
 }
 
 // Test the release
-func (t GoSDK) CheckReleaseDryRun(ctx context.Context) error {
-	return t.Publish(
+func (t GoSDK) ReleaseDryRun(ctx context.Context) (CheckStatus, error) {
+	return CheckCompleted, t.Publish(
 		ctx,
 		"HEAD",
-		true,
+		true, // dryRun
 		"https://github.com/dagger/dagger-go-sdk.git",
 		"https://github.com/dagger/dagger.git",
 		"dagger-ci",

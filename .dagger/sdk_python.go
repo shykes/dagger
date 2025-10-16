@@ -45,8 +45,8 @@ func (t PythonSDK) RuntimeSource() *dagger.Directory {
 }
 
 // CheckGoFormat checks the Go code formatting for the Python runtime
-func (t PythonSDK) CheckLintGo(ctx context.Context) error {
-	return t.godev().CheckLint(ctx)
+func (t PythonSDK) LintGo(ctx context.Context) error {
+	return t.godev().Lint(ctx)
 }
 
 func (t PythonSDK) godev() *dagger.Go {
