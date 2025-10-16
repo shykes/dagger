@@ -39,8 +39,8 @@ func (t ElixirSDK) Generate(_ context.Context) (*dagger.Changeset, error) {
 }
 
 // Test the publishing process
-func (t ElixirSDK) CheckReleaseDryRun(ctx context.Context) error {
-	return t.Publish(ctx, "HEAD", true, nil)
+func (t ElixirSDK) ReleaseDryRun(ctx context.Context) (CheckStatus, error) {
+	return CheckCompleted, t.Publish(ctx, "HEAD", true, nil)
 }
 
 // Publish the Elixir SDK

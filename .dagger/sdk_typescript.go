@@ -136,8 +136,8 @@ func (t TypescriptSDK) Generate(ctx context.Context) (*dagger.Changeset, error) 
 }
 
 // Test the publishing process
-func (t TypescriptSDK) CheckReleaseDryRun(ctx context.Context) error {
-	return t.Publish(ctx, "HEAD", true, nil)
+func (t TypescriptSDK) ReleaseDryRun(ctx context.Context) (CheckStatus, error) {
+	return CheckCompleted, t.Publish(ctx, "HEAD", true, nil)
 }
 
 // Publish the Typescript SDK

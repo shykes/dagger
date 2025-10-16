@@ -37,6 +37,15 @@ func (p parallelJobs) WithJob(name string, fn JobFunc) parallelJobs {
 	return p
 }
 
+// NewJobFunc converts a function that returns a value and an error into a JobFunc
+// by discarding the returned value and only propagating the error.
+func NewJobFunc[ReturnType any](fn func(context.Context) (ReturnType, error)) JobFunc {
+	return func(ctx context.Context) error {
+		_, err := fn(ctx)
+		return err
+	}
+}
+
 func (p parallelJobs) Clone() parallelJobs {
 	cp := p
 	cp.Jobs = slices.Clone(cp.Jobs)

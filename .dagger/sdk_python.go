@@ -133,8 +133,8 @@ func (t PythonSDK) Generate(_ context.Context) (*dagger.Changeset, error) {
 }
 
 // Test the publishing process
-func (t PythonSDK) CheckReleaseDryRun(ctx context.Context) error {
-	return t.Publish(ctx, "HEAD", true, "", nil)
+func (t PythonSDK) ReleaseDryRun(ctx context.Context) (CheckStatus, error) {
+	return CheckCompleted, t.Publish(ctx, "HEAD", true, "", nil)
 }
 
 // Publish the Python SDK

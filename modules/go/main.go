@@ -570,7 +570,7 @@ func (p Go) CheckTidy(ctx context.Context) (CheckStatus, error) {
 			return nil
 		})
 	}
-	return jobs.Run(ctx)
+	return CheckCompleted, jobs.Run(ctx)
 }
 
 func filterPath(path string, include, exclude []string) (bool, error) {

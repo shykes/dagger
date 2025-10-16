@@ -83,8 +83,8 @@ func (r RustSDK) Generate(_ context.Context) (*dagger.Changeset, error) {
 }
 
 // Test the publishing process
-func (r RustSDK) CheckReleaseDryRun(ctx context.Context) error {
-	return r.Publish(ctx, "HEAD", true, nil)
+func (r RustSDK) ReleaseDryRun(ctx context.Context) (CheckStatus, error) {
+	return CheckCompleted, r.Publish(ctx, "HEAD", true, nil)
 }
 
 // Publish the Rust SDK

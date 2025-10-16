@@ -26,9 +26,9 @@ func (t DotnetSDK) Test(ctx context.Context) error {
 		Test(ctx, t.Dagger.introspectionJSON())
 }
 
-func (t DotnetSDK) CheckReleaseDryRun(ctx context.Context) error {
+func (t DotnetSDK) ReleaseDryRun(ctx context.Context) (CheckStatus, error) {
 	// The SDK doesn't publish as a library at the moment.
-	return nil
+	return CheckSkipped, nil
 }
 
 // Install the SDK locally so that it can be imported

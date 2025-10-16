@@ -121,8 +121,8 @@ func (t PHPSDK) doctumConfig() *dagger.File {
 }
 
 // Test the publishing process
-func (t PHPSDK) CheckReleaseDryRun(ctx context.Context) error {
-	return t.Publish(ctx, "HEAD", true, "https://github.com/dagger/dagger-php-sdk.git", "https://github.com/dagger/dagger.git", "dagger-ci", "hello@dagger.io", nil)
+func (t PHPSDK) ReleaseDryRun(ctx context.Context) (CheckCompletes, error) {
+	return CheckCompleted, t.Publish(ctx, "HEAD", true, "https://github.com/dagger/dagger-php-sdk.git", "https://github.com/dagger/dagger.git", "dagger-ci", "hello@dagger.io", nil)
 }
 
 // Publish the PHP SDK

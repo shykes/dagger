@@ -50,9 +50,9 @@ func (t JavaSDK) Generate(ctx context.Context) (*dagger.Changeset, error) {
 }
 
 // Test the publishing process
-func (t JavaSDK) CheckReleaseDryRun(ctx context.Context) error {
+func (t JavaSDK) ReleaseDryRun(ctx context.Context) (CheckStatus, error) {
 	// FIXME: we don't have a working test-publish implementation
-	return nil
+	return CheckSkipped, nil
 }
 
 // Publish the Java SDK

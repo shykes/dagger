@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/dagger/dagger/.dagger/internal/dagger"
 	"github.com/dagger/dagger/util/parallel"
 )
 
@@ -14,36 +15,43 @@ func (dev *DaggerDev) CheckGenerated(ctx context.Context) (CheckStatus, error) {
 
 func (dev *DaggerDev) ReleaseDryRun(ctx context.Context) (CheckStatus, error) {
 	return CheckCompleted, parallel.New().
-		WithJob("Helm chart", dag.Helm().ReleaseDryRun).
-		WithJob("CLI", dag.DaggerCli().ReleaseDryRun).
-		WithJob("Engine", dag.DaggerCli().ReleaseDryRun).
-		WithJob("SDKs", func(context.Context) (any, error {
-			type dryRunner interface {
-				Name() string
-				CheckReleaseDryRun(context.Context) error
-			}
-			jobs := parallel.New()
-			for _, sdk := range allSDKs[dryRunner](dev) {
-				jobs = jobs.WithJob(sdk.Name(), sdk.CheckReleaseDryRun)
-			}
-			return jobs.Run(ctx)
+		WithJob("Helm chart", checkJob[dagger.HelmCheckStatus](dag.Helm().ReleaseDryRun)).
+		// FIXME: no CLI dry-run release?
+		WithJob("Engine", checkJob[dagger.DaggerEngineCheckStatus](dag.DaggerEngine().ReleaseDryRun)).
+		WithJob("SDKs", func(ctx context.Context) error {
+			return parallel.New().
+				// FIXME: we shouldn't hardcode the SDK list here, but native checks will remove this anyway
+				WithJob("go", checkJob[CheckStatus](dev.SDK().Go.ReleaseDryRun)).
+				WithJob("python", checkJob[CheckStatus](dev.SDK().Python.ReleaseDryRun)).
+				WithJob("typescript", checkJob[CheckStatus](dev.SDK().Typescript.ReleaseDryRun)).
+				WithJob("php", checkJob[CheckStatus](dev.SDK().PHP.ReleaseDryRun)).
+				WithJob("java", checkJob[CheckStatus](dev.SDK().Java.ReleaseDryRun)).
+				WithJob("elixir", checkJob[CheckStatus](dev.SDK().Elixir.ReleaseDryRun)).
+				WithJob("rust", checkJob[CheckStatus](dev.SDK().Rust.ReleaseDryRun)).
+				WithJob("dotnet", checkJob[CheckStatus](dev.SDK().Dotnet.ReleaseDryRun)).
+				Run(ctx)
 		}).
 		Run(ctx)
 }
 
+func checkJob[ReturnType any](check func(context.Context) (ReturnType, error)) parallel.JobFunc {
+	return parallel.NewJobFunc[ReturnType](check)
+}
+
 func (dev *DaggerDev) Lint(ctx context.Context) (CheckStatus, error) {
 	return CheckCompleted, parallel.New().
-		WithJob("lint go packages", dev.LintGo).
-		WithJob("lint docs", dev.CheckLintDocs).
-		WithJob("lint helm chart", dev.CheckLintHelm).
-		WithJob("lint install scripts", dev.CheckLintScripts).
-		WithJob("lint SDKs", dev.CheckLintSDKs).
+		WithJob("lint go packages", checkJob(dev.LintGo)).
+		WithJob("lint docs", checkJob(dev.LintDocs)).
+		WithJob("lint helm chart", checkJob(dev.LintHelm)).
+		WithJob("lint install scripts", checkJob(dev.LintScripts)).
+		WithJob("lint SDKs", checkJob(dev.LintSDKs)).
 		Run(ctx)
 }
 
 // Check that go modules have up-to-date go.mod and go.sum
 func (dev *DaggerDev) CheckTidy(ctx context.Context) (CheckStatus, error) {
-	return CheckCompleted, dev.godev().CheckTidy(ctx)
+	_, err := dev.godev().CheckTidy(ctx)
+	return CheckCompleted, err
 }
 
 // Run linters for all SDKs
