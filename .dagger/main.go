@@ -26,28 +26,6 @@ type DaggerDev struct {
 	DockerCfg *dagger.Secret // +private
 }
 
-func (dev *DaggerDev) godev() *dagger.Go {
-	return dag.Go(dev.Source, dagger.GoOpts{
-		// FIXME: differentiate between:
-		// 1) lint exclusions,
-		// 2) go mod tidy exclusions,
-		// 3) dagger runtime generation exclusions
-		// 4) actually building & testing stuff
-		// --> maybe it's a "check exclusion"?
-		Exclude: []string{
-			"docs/**",
-			"core/integration/**",
-			"dagql/idtui/viztest/broken/**",
-			"modules/evals/**",
-			"**/broken*/**",
-		},
-		Values: []string{
-			"github.com/dagger/dagger/engine.Version=" + dev.Version,
-			"github.com/dagger/dagger/engine.Tag=" + dev.Tag,
-		},
-	})
-}
-
 func New(
 	ctx context.Context,
 	// +optional
@@ -91,11 +69,6 @@ func New(
 		DockerCfg: dockerCfg,
 	}
 	return dev, nil
-}
-
-// Develop the Dagger CLI
-func (dev *DaggerDev) CLI() *CLI {
-	return &CLI{Dagger: dev}
 }
 
 // Bump the version of all versioned components

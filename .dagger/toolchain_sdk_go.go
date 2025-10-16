@@ -8,26 +8,31 @@ import (
 	"github.com/dagger/dagger/.dagger/internal/dagger"
 )
 
+// Develop the Dagger Go SDK
+func (sdk *SDK) Go(
+	// +defaultPath="/"
+	// +ignore=[
+	//  "*",
+	// 	"!sdk/go",
+	//  "!**/go.mod",
+	//  "!**/go.sum",
+	//  "!cmd/codegen",
+	//  "!engine/slog",
+	// ]
+	source *dagger.Directory,
+	// FIXME: add a source argument when spun out
+) GoSDK {
+	return GoSDK{
+		Source: source,
+	}
+}
+
 type GoSDK struct {
-	Dagger *DaggerDev // +private
+	Source *dagger.Directory
 }
 
 func (t GoSDK) Name() string {
 	return "go"
-}
-
-func (t GoSDK) Source() *dagger.Directory {
-	// FIXME: use pre-call filtering when this module is spun out
-	// (or when we get self-calls)
-	return t.Dagger.Source.Filter(dagger.DirectoryFilterOpts{
-		Include: []string{
-			"sdk/go",
-			"**/go.mod",
-			"**/go.sum",
-			"cmd/codegen",
-			"engine/slog",
-		},
-	})
 }
 
 // Test the Go SDK
@@ -44,7 +49,7 @@ func (t GoSDK) BaseContainer() *dagger.Container {
 }
 
 func (t GoSDK) DevContainer() *dagger.Container {
-	return dag.Go(t.Source()).
+	return dag.Go(t.Source).
 		Env().
 		With(t.Dagger.devEngineSidecar()).
 		WithWorkdir("sdk/go")

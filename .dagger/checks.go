@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 
-	"github.com/dagger/dagger/.dagger/internal/dagger"
 	"github.com/dagger/dagger/util/parallel"
 )
 
@@ -15,9 +14,6 @@ func (dev *DaggerDev) CheckGenerated(ctx context.Context) (CheckStatus, error) {
 
 func (dev *DaggerDev) ReleaseDryRun(ctx context.Context) (CheckStatus, error) {
 	return CheckCompleted, parallel.New().
-		WithJob("Helm chart", checkJob[dagger.HelmCheckStatus](dag.Helm().ReleaseDryRun)).
-		// FIXME: no CLI dry-run release?
-		WithJob("Engine", checkJob[dagger.DaggerEngineCheckStatus](dag.DaggerEngine().ReleaseDryRun)).
 		WithJob("SDKs", func(ctx context.Context) error {
 			return parallel.New().
 				// FIXME: we shouldn't hardcode the SDK list here, but native checks will remove this anyway
@@ -38,22 +34,6 @@ func checkJob[ReturnType any](check func(context.Context) (ReturnType, error)) p
 	return parallel.NewJobFunc[ReturnType](check)
 }
 
-func (dev *DaggerDev) Lint(ctx context.Context) (CheckStatus, error) {
-	return CheckCompleted, parallel.New().
-		WithJob("lint go packages", checkJob(dev.LintGo)).
-		WithJob("lint docs", checkJob(dev.LintDocs)).
-		WithJob("lint helm chart", checkJob(dev.LintHelm)).
-		WithJob("lint install scripts", checkJob(dev.LintScripts)).
-		WithJob("lint SDKs", checkJob(dev.LintSDKs)).
-		Run(ctx)
-}
-
-// Check that go modules have up-to-date go.mod and go.sum
-func (dev *DaggerDev) CheckTidy(ctx context.Context) (CheckStatus, error) {
-	_, err := dev.godev().CheckTidy(ctx)
-	return CheckCompleted, err
-}
-
 // Run linters for all SDKs
 func (dev *DaggerDev) LintSDKs(ctx context.Context) (CheckStatus, error) {
 	type linter interface {
@@ -67,22 +47,16 @@ func (dev *DaggerDev) LintSDKs(ctx context.Context) (CheckStatus, error) {
 	return CheckCompleted, jobs.Run(ctx)
 }
 
-// Lint the helm chart
-func (dev *DaggerDev) LintHelm(ctx context.Context) (CheckStatus, error) {
-	// FIXME: temporary wrapper
-	return CheckCompleted, dag.Helm().CheckLint(ctx)
-}
-
 // Lint the documentation
 func (dev *DaggerDev) LintDocs(ctx context.Context) (CheckStatus, error) {
 	// FIXME: temporary wrapper
-	return CheckCompleted, dag.Docs().CheckLint(ctx)
+	_, err := CheckCompleted, dag.Docs().Lint(ctx)
 }
 
 // Lint the install scripts
 func (dev *DaggerDev) LintScripts(ctx context.Context) (CheckStatus, error) {
 	// FIXME: temporary wrapper
-	return CheckCompleted, dev.Scripts().CheckLint(ctx)
+	return CheckCompleted, dev.Scripts().Lint(ctx)
 }
 
 // Lint the Go codebase
@@ -93,11 +67,6 @@ func (dev *DaggerDev) LintGo(ctx context.Context) (CheckStatus, error) {
 // Verify that scripts work correctly
 func (dev *DaggerDev) TestInstallScripts(ctx context.Context) (CheckStatus, error) {
 	return CheckCompleted, dev.Scripts().Test(ctx)
-}
-
-// Verify that helm works correctly
-func (dev *DaggerDev) TestHelm(ctx context.Context) (CheckStatus, error) {
-	return CheckCompleted, dag.Helm().Test(ctx)
 }
 
 // Run all checks for all SDKs

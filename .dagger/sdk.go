@@ -15,8 +15,6 @@ import (
 // A dev environment for the official Dagger SDKs
 type SDK struct {
 	Dagger *DaggerDev // +private
-	// Develop the Dagger Go SDK
-	Go *GoSDK
 	// Develop the Dagger Python SDK
 	Python *PythonSDK
 	// Develop the Dagger Typescript SDK
@@ -32,27 +30,6 @@ type SDK struct {
 	Java *JavaSDK
 	// Develop the Dagger Dotnet SDK (experimental)
 	Dotnet *DotnetSDK
-}
-
-// Return an "installer" function which, given a container, will attach
-// a dev engine and CLI
-func (dev *DaggerDev) devEngineSidecar() func(*dagger.Container) *dagger.Container {
-	// The name "sdk" is an arbitrary key for engine state reuse across builds
-	instanceName := "sdk"
-	engineSvc := dag.DaggerEngine().Service(instanceName)
-	cliBinary := dag.DaggerCli().Binary()
-	cliBinaryPath := "/.dagger-cli"
-
-	return func(ctr *dagger.Container) *dagger.Container {
-		ctr = ctr.
-			WithServiceBinding("dagger-engine", engineSvc).
-			WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "tcp://dagger-engine:1234").
-			WithMountedFile(cliBinaryPath, cliBinary).
-			WithEnvVariable("_EXPERIMENTAL_DAGGER_CLI_BIN", cliBinaryPath).
-			WithExec([]string{"ln", "-s", cliBinaryPath, "/usr/local/bin/dagger"}).
-			With(dev.withDockerCfg) // this avoids rate limiting in our ci tests
-		return ctr
-	}
 }
 
 // Return a list of all SDKs implementing the given interface

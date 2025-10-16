@@ -1,9 +1,16 @@
 package main
 
 import (
+	"context"
+
 	"github.com/containerd/platforms"
 	"github.com/dagger/dagger/.dagger/internal/dagger"
 )
+
+// Develop the Dagger CLI
+func (dev *DaggerDev) CLI() *CLI {
+	return &CLI{Dagger: dev}
+}
 
 type CLI struct {
 	Dagger *DaggerDev // +private
@@ -47,4 +54,9 @@ func (cli *CLI) DevBinaries(
 	}
 
 	return dir
+}
+
+func (cli *CLI) ReleaseDryRun(ctx context.Context) (CheckStatus, error) {
+	status, err := dag.DaggerCli().ReleaseDryRun(ctx)
+	return CheckStatus(status), err
 }

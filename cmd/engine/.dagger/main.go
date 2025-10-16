@@ -129,6 +129,26 @@ func (e *DaggerEngine) Container(
 	return ctr, nil
 }
 
+// Install the dagger engine as a sidecar on another container
+func (e *DaggerEngine) InstallSidecar(
+	ctr *dagger.Container,
+	instanceName string, //+optional
+) *dagger.Container {
+	engineSvc := e.Service(instanceName)
+	cliBinary := dag.DaggerCli().Binary()
+	cliBinaryPath := "/.dagger-cli"
+	return ctr.
+			WithServiceBinding("dagger-engine", engineSvc).
+			WithEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST","tcp://dagger-engine:1234").
+			WithMountedFile(cliBinaryPath, cliBinary).
+			WithEnvVariable("_EXPERIMENTAL_DAGGER_CLI_BIN",cliBinaryPath).
+			WithExec([]string{"ln", "-s", cliBinaryPath,"/usr/local/bin/dagger"}).
+			With(dev.withDockerCfg) // this avoids rate limiting inour ci tests
+	}
+}
+
+}
+
 // Create a test engine service
 func (e *DaggerEngine) Service(
 	ctx context.Context,
