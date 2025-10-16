@@ -42,7 +42,7 @@ func (t GoSDK) Test(ctx context.Context) (rerr error) {
 }
 
 func (t GoSDK) BaseContainer() *dagger.Container {
-	return dag.Go(nil).Base()
+	return dag.Go(dag.Directory()).Base()
 }
 
 func (t GoSDK) DevContainer() *dagger.Container {

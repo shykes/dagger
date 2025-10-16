@@ -199,7 +199,7 @@ func (p Go) GenerateDaggerRuntimes(ctx context.Context) (Go, error) {
 	if err := parallel.Run(ctx,
 		fmt.Sprintf("generate %d dagger runtimes", len(daggerMods)),
 		func(ctx context.Context) error {
-			jobs := parallel.New()
+			jobs := parallel.New().WithLimit(3)
 			for daggerMod := range daggerMods {
 				jobs = jobs.WithJob(daggerMod, func(ctx context.Context) error {
 					layer := p.Source.
@@ -615,7 +615,7 @@ func (p Go) CheckLint(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	jobs := parallel.New()
+	jobs := parallel.New().WithLimit(3)
 	for _, mod := range modules {
 		jobs = jobs.WithJob(mod, func(ctx context.Context) error {
 			_, err := dag.Container().
