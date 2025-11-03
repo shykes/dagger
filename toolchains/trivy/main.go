@@ -9,6 +9,7 @@ import (
 
 type Trivy struct {
 	Source      *dagger.Directory
+	Containers []*dagger.Containers
 	ConfigFiles *dagger.Directory
 }
 
@@ -16,15 +17,9 @@ func New(
 	// The source tree to run the security toolchain against
 	// +defaultPath="/"
 	source *dagger.Directory,
-
-	// A directory containing trivvy scan config files.
-	// +defaultPath="/"
-	// +ignore=["*", "!.trivyignore", "!.trivyignore.yml", "!.trivyignore.yaml"]
-	configFiles *dagger.Directory,
 ) *Trivy {
 	return &Trivy{
 		Source:      source,
-		ConfigFiles: configFiles,
 	}
 }
 
@@ -56,10 +51,12 @@ func (trivy *Trivy) ScanSource(
 	return CheckCompleted, err
 }
 
-// Scan container images for security vulnerabilities
 func (trivy *Trivyscan) ScanContainers(ctx context.Context) (MyCheckStatus, error) {
+}
 
-
+// Scan container images for security vulnerabilities
+func (trivy *Trivyscan) ScanContainers(ctx context.Context, container []*dagger.Container) (MyCheckStatus, error) {
+	// FIXME: project-specific code below:
 		args := []string{
 			"trivy",
 			"image",
