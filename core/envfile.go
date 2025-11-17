@@ -107,13 +107,13 @@ func (ef *EnvFile) variablesRaw(_ context.Context) (vars []EnvVariable, _ error)
 	return vars, nil
 }
 
-func (ef *EnvFile) variables(_ context.Context) (vars []EnvVariable, _ error) {
+func (ef *EnvFile) variables(ctx context.Context) (vars []EnvVariable, _ error) {
 	hostGetEnv := func(name string) string {
 		// FIXME: for now, expanding system env variables is disabled,
 		//  until we address the caching issues.
 		//  See https://github.com/dagger/dagger/pull/11034#discussion_r2401382370
 		// To re-enable, call Host.GetEnv
-		return ""
+		return Host{}.GetEnv(ctx, name)
 	}
 	all, err := dotenv.All(ef.Environ, hostGetEnv)
 	if err != nil {
@@ -191,7 +191,7 @@ func (ef *EnvFile) Lookup(ctx context.Context, name string, raw bool) (string, b
 		//  until we address the caching issues.
 		//  See https://github.com/dagger/dagger/pull/11034#discussion_r2401382370
 		// To re-enable, call Host.GetEnv
-		return ""
+		return Host{}.GetEnv(ctx, name)
 	}
 	return dotenv.Lookup(ef.Environ, name, hostGetEnv)
 }
