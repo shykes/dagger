@@ -1,42 +1,81 @@
 ## What is Dagger?
 
-Dagger is an open-source runtime for composable workflows. It's perfect for systems with many moving parts and a strong need for **repeatability**, **modularity**, **observability** and **cross-platform support**. This makes it a great choice for AI agents and CI/CD workflows.
+Dagger is an incremental computation engine for CI/CD. It lets you
+write pipelines as code and runs them in containers.
 
-<p align="center"><img src="docs/static/img/readme/dagger-factory.jpg" width="75%"></p>
+## Properties
 
-## Key Features
+**Hermetic** — Every operation runs in a container. No implicit
+dependencies on host state.
 
-- **Containerized Workflow Execution:** Transform code into containerized, composable operations. Build reproducible workflows in any language with custom environments, parallel processing, and seamless chaining.
+**Incremental** — Operations are cached by the SHA of their inputs.
+Unchanged subgraphs are skipped entirely.
 
-- **Universal Type System:** Mix and match components from any language with type-safe connections. Use the best tools from each ecosystem without translation headaches.
+**Local-first** — Pipelines run the same on your laptop as in CI.
+Debug locally, push when it works.
 
-- **Automatic Artifact Caching:** Operations produce cacheable, immutable artifacts — even for LLMs and API calls. Your workflows run faster and cost less.
+**Programmable** — Pipelines are functions in Go, Python, or
+TypeScript. Use variables, loops, conditionals, and tests.
 
-- **Built-in Observability:** Full visibility into operations with tracing, logs, and metrics. Debug complex workflows and know exactly what's happening.
+## Use cases
 
-<p align="center"><img src="docs/static/img/readme/cloud-trace.gif" width="60%"></a>
+**End-to-end testing** — Spin up databases, queues, and services as
+containers. Run your test suite against them. Tear down automatically.
+Cache the setup so subsequent runs are fast.
 
-- **Open Platform:** Works with any compute platform and tech stack — today and tomorrow. Ship faster, experiment freely, and don’t get locked into someone else's choices.
+**Build pipelines** — Multi-stage builds with dependency caching.
+Matrix builds across platforms. Publish to registries.
 
-- **LLM Augmentation:** Native integration of any LLM that automatically discovers and uses available functions in your workflow. Ship mind-blowing agents in just a few dozen lines of code.
+**Dev environments** — Define your environment as code. Share it
+across the team. Run it locally or in CI.
 
-- **Interactive Terminal:** Directly interact with your workflow or agents in real-time through your terminal. Prototype, test, debug, and ship even faster.
+## Example
 
-<p align="center"><img src="docs/static/img/readme/da-robots-white-box.svg" width="60%"></a>
+An end-to-end test that spins up Postgres, runs migrations, and
+tests against it:
 
-## Getting started
+```go
+func Test(ctx context.Context, src *dagger.Directory) (string, error) {
+    // Start Postgres as a service
+    db := dag.Container().
+        From("postgres:16").
+        WithEnvVariable("POSTGRES_PASSWORD", "test").
+        WithExposedPort(5432).
+        AsService()
 
-- [Dagger for AI Agents](https://docs.dagger.io/ai-agents)
-- [Dagger for CI](https://docs.dagger.io/quickstart)
+    // Run tests with database attached
+    return dag.Container().
+        From("golang:1.21").
+        WithDirectory("/src", src).
+        WithWorkdir("/src").
+        WithServiceBinding("db", db).
+        WithEnvVariable("DATABASE_URL", "postgres://postgres:test@db:5432/postgres").
+        WithExec([]string{"go", "run", "./cmd/migrate"}).
+        WithExec([]string{"go", "test", "./..."}).
+        Stdout(ctx)
+}
+```
 
-## Join the community
+```
+dagger call test --src=.
+```
 
-- Join the [Dagger community server](https://discord.gg/NpzVhsGnZu)
-- Follow us on [Twitter](https://twitter.com/dagger_io)
-- Check out our [community activities](https://dagger.io/community)
-- Read more in our [documentation](https://docs.dagger.io)
+First run: pulls images, starts Postgres, runs migrations, runs tests.
+Second run: if `src` hasn't changed, returns cached result instantly.
 
-## Contributing
+## Install
 
-Interested in contributing or building dagger from scratch? See
-[CONTRIBUTING.md](https://github.com/dagger/dagger/tree/main/CONTRIBUTING.md).
+```
+curl -fsSL https://dl.dagger.io/install.sh | sh
+```
+
+## Documentation
+
+- [Quickstart](https://docs.dagger.io/quickstart)
+- [API reference](https://docs.dagger.io/api)
+- [Module registry](https://daggerverse.dev)
+
+## Community
+
+- [Discord](https://discord.gg/dagger-io)
+- [GitHub](https://github.com/dagger/dagger)
