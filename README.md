@@ -1,42 +1,66 @@
 ## What is Dagger?
 
-Dagger is an open-source runtime for composable workflows. It's perfect for systems with many moving parts and a strong need for **repeatability**, **modularity**, **observability** and **cross-platform support**. This makes it a great choice for AI agents and CI/CD workflows.
+Dagger is an open-source, agent-ready platform for end-to-end testing.
 
-<p align="center"><img src="docs/static/img/readme/dagger-factory.jpg" width="75%"></p>
+AI coding agents are fast but unreliable — they need an external system for trusted feedback on every code change. Dagger provides that feedback: repeatable test execution that agents can call as they develop, and CI can verify during review. It runs locally, in CI, or directly in the cloud.
 
-## Key Features
+```
+brew install dagger/tap/dagger
+```
 
-- **Containerized Workflow Execution:** Transform code into containerized, composable operations. Build reproducible workflows in any language with custom environments, parallel processing, and seamless chaining.
+## Why Dagger?
 
-- **Universal Type System:** Mix and match components from any language with type-safe connections. Use the best tools from each ecosystem without translation headaches.
 
-- **Automatic Artifact Caching:** Operations produce cacheable, immutable artifacts — even for LLMs and API calls. Your workflows run faster and cost less.
+### Repeatable
 
-- **Built-in Observability:** Full visibility into operations with tracing, logs, and metrics. Debug complex workflows and know exactly what's happening.
+With LLMs, code changes are nearly instant. The bottleneck is now trusted feedback: you can only ship as fast as you can get repeatable test results.
 
-<p align="center"><img src="docs/static/img/readme/cloud-trace.gif" width="60%"></a>
+Dagger is designed for repeatability: tests run in containers; orchestration logic runs in sandboxed functions; host dependencies are explicit and strictly typed; intermediate artifacts are built just-in-time; everything is cached by default with fine-grained control. Same inputs, same outputs.
 
-- **Open Platform:** Works with any compute platform and tech stack — today and tomorrow. Ship faster, experiment freely, and don’t get locked into someone else's choices.
+### Local-first
 
-- **LLM Augmentation:** Native integration of any LLM that automatically discovers and uses available functions in your workflow. Ship mind-blowing agents in just a few dozen lines of code.
+Local execution is a core feature. Once configured, Dagger runs your tests reliably on any supported system. The only dependency is a recent Linux kernel. On non-Linux systems, Docker Desktop and similar products are supported out of the box.
 
-- **Interactive Terminal:** Directly interact with your workflow or agents in real-time through your terminal. Prototype, test, debug, and ship even faster.
+### Programmable
 
-<p align="center"><img src="docs/static/img/readme/da-robots-white-box.svg" width="60%"></a>
+Shell scripts and proprietary YAML are no longer acceptable for test orchestration. Dagger provides a complete platform: a container and function runtime, system API, cross-language type system, SDKs for 8 languages, and an interactive REPL.
+
+```go
+// Example: test a Go project
+func (m *MyModule) Test(ctx context.Context, source *dagger.Directory) (string, error) {
+    return dag.Container().
+        From("golang:1.23").
+        WithDirectory("/src", source).
+        WithWorkdir("/src").
+        WithExec([]string{"go", "test", "./..."}).
+        Stdout(ctx)
+}
+```
+
+### Observable
+
+Built-in tracing, logs, and metrics show exactly what's happening at every step. Debug complex workflows immediately instead of guessing from a wall of text.
+
+<p align="center"><img src="docs/static/img/readme/cloud-trace.gif" width="60%"></p>
+
+### Open
+
+The engine, CLI, and SDKs are open-source. We use open standards: OpenTelemetry for observability, OCI for containers, GraphQL for the API. Our [commercial product](https://dagger.io/cloud) enhances the open ecosystem rather than competing with it.
+
 
 ## Getting started
 
-- [Dagger for AI Agents](https://docs.dagger.io/ai-agents)
-- [Dagger for CI](https://docs.dagger.io/quickstart)
+- [Documentation](https://docs.dagger.io)
+- [Quickstart](https://docs.dagger.io/quickstart)
+- [AI Agents Guide](https://docs.dagger.io/ai-agents)
 
-## Join the community
+## Community
 
-- Join the [Dagger community server](https://discord.gg/NpzVhsGnZu)
-- Follow us on [Twitter](https://twitter.com/dagger_io)
-- Check out our [community activities](https://dagger.io/community)
-- Read more in our [documentation](https://docs.dagger.io)
+- [Discord](https://discord.gg/dagger-io) — ~5,000 members
+- [GitHub Discussions](https://github.com/dagger/dagger/discussions)
+- [Twitter](https://twitter.com/dagger_io)
+- [Community Page](https://dagger.io/community)
 
 ## Contributing
 
-Interested in contributing or building dagger from scratch? See
-[CONTRIBUTING.md](https://github.com/dagger/dagger/tree/main/CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/dagger/dagger/blob/main/CONTRIBUTING.md).
